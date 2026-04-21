@@ -1,0 +1,43 @@
+# macOS
+.DS_Store
+
+# Flutter / Dart
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.metadata
+**/build/
+**/.packages
+**/pubspec_overrides.yaml
+
+# Android / Gradle
+**/.gradle/
+**/local.properties
+**/captures/
+
+# iOS / Xcode
+**/Pods/
+**/.symlinks/
+**/Flutter/ephemeral/
+**/Flutter/Generated.xcconfig
+**/Flutter/flutter_export_environment.sh
+**/DerivedData/
+**/*.mode1v3
+**/*.mode2v3
+**/*.moved-aside
+**/*.pbxuser
+**/*.perspectivev3
+**/*.xcuserstate
+**/*.xcworkspace/xcuserdata/
+**/*.xcuserdatad/
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# Local demo secrets / machine-local config
+example/local.config.ts
+
+# Misc local scratch files
+example/x

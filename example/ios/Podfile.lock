@@ -1,0 +1,60 @@
+PODS:
+  - Flutter (1.0.0)
+  - flutter_davoice (0.0.1):
+    - Flutter
+    - onnxruntime-objc (~> 1.20.0)
+  - flutter_wake_word (1.0.1):
+    - Flutter
+    - onnxruntime-objc (~> 1.20.0)
+  - integration_test (0.0.1):
+    - Flutter
+  - ios_microphone_permission (0.0.1):
+    - Flutter
+  - onnxruntime-c (1.20.0)
+  - onnxruntime-objc (1.20.0):
+    - onnxruntime-objc/Core (= 1.20.0)
+  - onnxruntime-objc/Core (1.20.0):
+    - onnxruntime-c (= 1.20.0)
+  - permission_handler_apple (9.3.0):
+    - Flutter
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - flutter_davoice (from `.symlinks/plugins/flutter_davoice/ios`)
+  - flutter_wake_word (from `.symlinks/plugins/flutter_wake_word/ios`)
+  - integration_test (from `.symlinks/plugins/integration_test/ios`)
+  - ios_microphone_permission (from `.symlinks/plugins/ios_microphone_permission/ios`)
+  - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
+
+SPEC REPOS:
+  trunk:
+    - onnxruntime-c
+    - onnxruntime-objc
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  flutter_davoice:
+    :path: ".symlinks/plugins/flutter_davoice/ios"
+  flutter_wake_word:
+    :path: ".symlinks/plugins/flutter_wake_word/ios"
+  integration_test:
+    :path: ".symlinks/plugins/integration_test/ios"
+  ios_microphone_permission:
+    :path: ".symlinks/plugins/ios_microphone_permission/ios"
+  permission_handler_apple:
+    :path: ".symlinks/plugins/permission_handler_apple/ios"
+
+SPEC CHECKSUMS:
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  flutter_davoice: 78de5590da999720d161772586cf50148931b2bb
+  flutter_wake_word: 42f07fbf0774a86fd8a821fd2915a68f0676c6af
+  integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
+  ios_microphone_permission: 7d975ad9996d44c677d44c188dc69db9bf5badf3
+  onnxruntime-c: 07cfff40dda7e1c54a4350bb2ad226c63150fce3
+  onnxruntime-objc: b22c5d4517e9804e47c66f1f122ec4a6aa923f86
+  permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
+
+PODFILE CHECKSUM: 6698267f678a7e8d42fcdcf3bf503cca197e9017
+
+COCOAPODS: 1.16.2
