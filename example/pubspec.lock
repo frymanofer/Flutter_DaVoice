@@ -132,10 +132,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_wake_word
-      sha256: "005de04cbf61856b666a174bc4273a1bf95c53e7246ce706500b7ac1d91e6764"
+      sha256: "74a152a5f6bab6273ed052cce2cc5db6ee037f9e88466f9606db41e9d4776064"
       url: "https://pub.dev"
     source: hosted
-    version: "0.0.42"
+    version: "0.0.43"
   flutter_web_plugins:
     dependency: transitive
     description: flutter
