@@ -61,7 +61,7 @@ It currently demonstrates:
 
 - voice selection between `Ariana` and `Rich`
 - quality selection between `Lite` and `Heavy`
-- Davoice license loading from `licensekey.txt` or manual entry
+- bundled temporary Davoice license loading from `licensekey.txt`, with manual replacement
 - optional speaker verification onboarding
 - reuse of a previously saved speaker signature
 - live speaker verification before starting the full voice pipeline
@@ -142,7 +142,7 @@ For teams searching for Flutter text to speech on device or offline TTS for Flut
 When you launch the demo:
 
 1. Choose voice quality and speaker voice.
-2. Enter a DaVoice license, or let the app load it from `example/licensekey.txt`.
+2. Use the bundled temporary DaVoice license, or enter a replacement license.
 3. Choose whether to create or reuse a speaker verification signature.
 4. The app initializes wake word detection and the Davoice speech engine.
 5. On the first wake word event, the app asks which area to test:
@@ -176,7 +176,7 @@ It also includes:
 - [`example/lib/main.dart`](example/lib/main.dart): full demo app and voice flow
 - [`example/pubspec.yaml`](example/pubspec.yaml): Flutter dependencies and bundled assets
 - [`example/assets/models/`](example/assets/models/): Davoice TTS, wake word, and speaker verification models
-- [`example/licensekey.txt`](example/licensekey.txt): optional bundled DaVoice license
+- [`example/licensekey.txt`](example/licensekey.txt): intentionally public temporary DaVoice license
 - [`example/local.config.ts`](example/local.config.ts): optional Gemini API key config
 - [`example/README.md`](example/README.md): pointer to this main project README
 - [`docs/flutter-speaker-identification.md`](docs/flutter-speaker-identification.md): focused speaker identification and verification page
@@ -227,9 +227,10 @@ flutter pub get
 
 The `ensure-lfs` script is the Flutter repo equivalent of the React Native example's LFS bootstrap step. It verifies that Git LFS is installed and pulls the large model assets if the checkout currently contains LFS pointer files.
 
-### 2. Add your DaVoice license
+### 2. DaVoice license
 
-You can either:
+The public example includes a temporary license in `example/licensekey.txt` so
+users can run the demo immediately. When it expires, you can either:
 
 - copy `example/licensekey.example.txt` to `example/licensekey.txt` and paste your key there
 - or paste it into the app on startup
