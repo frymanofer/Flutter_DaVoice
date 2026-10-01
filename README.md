@@ -200,10 +200,15 @@ This Flutter example is valuable because it tackles those integration edges in a
 ## Requirements
 
 - Flutter SDK compatible with the app's Dart/Flutter setup
-- Android `minSdk` 29+
+- Android `minSdk` 23+ on `arm64-v8a`
 - iOS 13.0+
 - microphone permission
 - on iOS, speech recognition permission
+
+On Android API 23–32, STT uses the system recognizer's microphone path. Custom
+PCM/AEC and the inline STT SpeakerID gate are available on API 33 and newer.
+The full Android stack currently supports ARM64; see the
+[Android compatibility contract](example/ANDROID_COMPATIBILITY.md).
 
 This app already includes the required platform permissions in:
 
@@ -285,8 +290,8 @@ Reference docs used while shaping this example README:
 
 Published packages used by this app:
 
-- `flutter_davoice: ^0.0.2`
-- `flutter_wake_word: ^0.0.42`
+- `flutter_davoice: ^0.0.6`
+- `flutter_wake_word: ^0.0.45`
 
 ## Notes
 

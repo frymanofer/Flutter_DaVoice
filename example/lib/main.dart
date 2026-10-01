@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'flow/startup_narration.dart';
+import 'flow/transcript.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_davoice/flutter_davoice.dart';
@@ -14,12 +17,14 @@ void main() {
 }
 
 const _speakerId = 0;
+const _usesSharedTtsModel = false;
 const _svOnboardingSampleCount = 5;
 const _androidSvUiMatchThreshold = 0.34;
-const _svDecisionThreshold = 0.35;
+final _svDecisionThreshold = Platform.isAndroid ? 0.34 : 0.35;
 const _svMatchHold = Duration(milliseconds: 750);
-const _richSpeakerSpeed = 1.06;
-const _arianaSpeakerSpeed = 0.88;
+const _richSpeakerSpeed = 0.95;
+const _hannaSpeakerSpeed = 1.0;
+const _arianaSpeakerSpeed = 1.0;
 const _wakewordInstanceId = 'multi_model_instance';
 const _wakewordThreshold = 0.999;
 const _wakewordBufferCount = 3;
@@ -28,7 +33,7 @@ const _locale = 'en-US';
 const _speechSilenceTimeout = Duration(milliseconds: 2000);
 const _geminiModel = 'gemini-3.1-flash-lite-preview';
 const _geminiSystemPrompt =
-    'You are a helpful voice assistant inside a Flutter demo app. Reply conversationally, keep answers concise for spoken playback, and avoid markdown.';
+    'You are a helpful voice assistant inside a Flutter demo app. Reply conversationally, keep answers concise for spoken playback, and avoid markdown. For time-sensitive facts like current leaders, dates, news, prices, or recent events, answer cautiously and say when you may be unsure rather than asserting a stale fact.';
 const _rnBackground = Color(0xff667eea);
 const _rnCard = Color(0xeb070c1a);
 const _rnGreen = Color(0xff34c759);
@@ -37,69 +42,89 @@ const _rnText = Color(0xffffffff);
 const _rnMutedText = Color(0xb3ffffff);
 const _rnSoftBorder = Color(0x24ffffff);
 const _rnSoftFill = Color(0x14ffffff);
-const _wakewordAudioOptions = [
+const _hdAudioOptions = [
   WakewordAudioOption.mixWithOthers,
-  WakewordAudioOption.allowBluetooth,
-  WakewordAudioOption.allowBluetoothA2DP,
+  WakewordAudioOption.bluetoothHighQualityRecording,
   WakewordAudioOption.allowAirPlay,
 ];
-const _wakewordDefaultAudioOptions = [
-  ..._wakewordAudioOptions,
+const _speakerAudioOptions = [
+  WakewordAudioOption.mixWithOthers,
+  WakewordAudioOption.allowBluetoothA2DP,
+  WakewordAudioOption.allowAirPlay,
   WakewordAudioOption.defaultToSpeaker,
 ];
+const _hdRoute = RouteConfigEntry(
+  category: WakewordAudioCategory.playAndRecord,
+  mode: WakewordAudioMode.defaultMode,
+  options: _hdAudioOptions,
+  preferredInput: WakewordPreferredInput.bluetoothHighQualityMic,
+  forceFallback: WakewordPreferredInput.none,
+);
+const _speakerRoute = RouteConfigEntry(
+  category: WakewordAudioCategory.playAndRecord,
+  mode: WakewordAudioMode.defaultMode,
+  options: _speakerAudioOptions,
+  preferredInput: WakewordPreferredInput.builtInMic,
+);
 const _defaultAudioRoutingConfig = AudioRoutingConfig(
   defaultRoute: RouteConfigEntry(
     category: WakewordAudioCategory.playAndRecord,
     mode: WakewordAudioMode.defaultMode,
-    options: _wakewordDefaultAudioOptions,
-    preferredInput: WakewordPreferredInput.none,
+    options: [..._hdAudioOptions, WakewordAudioOption.defaultToSpeaker],
+    preferredInput: WakewordPreferredInput.bluetoothHighQualityMic,
+    forceFallback: WakewordPreferredInput.none,
   ),
   carAudio: RouteConfigEntry(
     category: WakewordAudioCategory.playAndRecord,
     mode: WakewordAudioMode.defaultMode,
     options: [
-      ..._wakewordAudioOptions,
+      WakewordAudioOption.mixWithOthers,
+      WakewordAudioOption.allowBluetooth,
+      WakewordAudioOption.allowBluetoothA2DP,
+      WakewordAudioOption.allowAirPlay,
       WakewordAudioOption.overrideMutedMicrophoneInterruption,
     ],
     preferredInput: WakewordPreferredInput.none,
   ),
-  builtInReceiver: RouteConfigEntry(
-    category: WakewordAudioCategory.playAndRecord,
-    mode: WakewordAudioMode.defaultMode,
-    options: _wakewordDefaultAudioOptions,
-    preferredInput: WakewordPreferredInput.none,
-  ),
-  builtInSpeaker: RouteConfigEntry(
-    category: WakewordAudioCategory.playAndRecord,
-    mode: WakewordAudioMode.defaultMode,
-    options: _wakewordDefaultAudioOptions,
-    preferredInput: WakewordPreferredInput.none,
-  ),
-  bluetoothA2DP: RouteConfigEntry(
-    category: WakewordAudioCategory.playAndRecord,
-    mode: WakewordAudioMode.defaultMode,
-    options: _wakewordAudioOptions,
-    preferredInput: WakewordPreferredInput.builtInMic,
-  ),
-  bluetoothHFP: RouteConfigEntry(
-    category: WakewordAudioCategory.playAndRecord,
-    mode: WakewordAudioMode.defaultMode,
-    options: _wakewordAudioOptions,
-    preferredInput: WakewordPreferredInput.none,
-  ),
+  builtInReceiver: _speakerRoute,
+  builtInSpeaker: _speakerRoute,
+  bluetoothA2DP: _hdRoute,
+  bluetoothHFP: _hdRoute,
   headphones: RouteConfigEntry(
     category: WakewordAudioCategory.playAndRecord,
     mode: WakewordAudioMode.defaultMode,
-    options: _wakewordAudioOptions,
-    preferredInput: WakewordPreferredInput.none,
+    options: [
+      WakewordAudioOption.mixWithOthers,
+      WakewordAudioOption.allowBluetoothA2DP,
+      WakewordAudioOption.allowAirPlay,
+    ],
+    preferredInput: WakewordPreferredInput.builtInMic,
   ),
+  whenPlayingAudio: PlaybackRoutingConfig(
+    onPlay: AudioRoutingOverride(options: [WakewordAudioOption.duckOthers]),
+    onFinishPlaying: AudioRoutingOverride(notifyOthers: true),
+  ),
+  sttDuckingConfig: STTDuckingConfig(
+    onUnpause: AudioRoutingOverride(options: [WakewordAudioOption.duckOthers]),
+    onPause: AudioRoutingOverride(notifyOthers: true),
+  ),
+  wakewordAEC: WakewordAECConfig(regular: false, duringTTS: true),
+  wakeWordDuringTTS: WakeWordDuringTTSConfig(threshold: 0.9, bufferCount: 1),
 );
 
-enum _VoiceChoice { ariana, rich }
+enum _VoiceChoice { hanna, ariana, rich }
 
-enum _AppModeChoice { fullAiChat, ttsTest }
+enum _AppModeChoice { fullAiChat, combined, sttOnly, typeToTts }
 
-enum _Stage { voicePicker, svPrompt, svStatus, modePicker, ttsTest, home }
+enum _Stage {
+  preparing,
+  voicePicker,
+  svPrompt,
+  svStatus,
+  modePicker,
+  ttsTest,
+  home,
+}
 
 enum _SVStatusPhase { onboarding, verifying }
 
@@ -166,6 +191,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   );
 
   KeyWordFlutterPC? _wakeword;
+  StreamSubscription<Map<String, dynamic>>? _wakewordSubscription;
   SpeakerVerificationMicController? _svController;
   SpeakerVerificationMicController? _svVerifyController;
   StreamSubscription<Map<String, dynamic>>? _svVerifyResultSub;
@@ -173,10 +199,13 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   Timer? _svElapsedTimer;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
 
-  _Stage _stage = _Stage.voicePicker;
-  _VoiceChoice _voiceChoice = _VoiceChoice.ariana;
+  _Stage _stage = _Stage.preparing;
+  final _narration = StartupNarration();
+  String? _loadedTtsModel;
+  _VoiceChoice _voiceChoice = _VoiceChoice.rich;
   _AppModeChoice _appModeChoice = _AppModeChoice.fullAiChat;
-  String _message = 'Choose a voice model to initialize the demo.';
+  String _message = 'Preparing voice demo...';
+  bool _setupFailed = false;
   String _licenseSource = 'No license selected yet.';
   String? _geminiApiKey;
   String? _savedEnrollmentJson;
@@ -185,6 +214,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   String? _pendingWakeWordForModeChoice;
   _SVStatusPhase _svStatusPhase = _SVStatusPhase.onboarding;
   bool _isBusy = false;
+  int _busyEpoch = 0;
   bool _isFirstWakeWordCallback = true;
   bool _wakeWordArmed = false;
   bool _isHandlingWakeWord = false;
@@ -207,29 +237,35 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   String _introScript = '';
   String _aiChatResponse = '';
   String _lastTranscript = '';
-  String _lastProcessedAITranscript = '';
   String _partialTranscript = '';
   String _lastWakeWord = 'Hey Coach';
   final List<Map<String, dynamic>> _geminiConversation = [];
   Timer? _speechSilenceTimer;
   int _speechUiEpoch = 0;
+  bool _isSwitchingMode = false;
+  bool _suppressSpeechResults = false;
+  HttpClient? _activeGeminiClient;
+  DateTime? _lastGeminiRequestAt;
+  DateTime? _geminiBlockedUntil;
+  final List<Map<String, String>> _chatHistory = [];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_ensureStartupPermissions());
+      unawaited(_startDemo());
     });
-    _loadBundledLicense();
     _loadGeminiApiKey();
     _listenToSpeechEvents();
   }
 
   @override
   void dispose() {
+    _beginSpeechUiEpoch();
     for (final subscription in _subscriptions) {
       subscription.cancel();
     }
+    unawaited(_wakewordSubscription?.cancel());
     _ttsController.dispose();
     _licenseController.dispose();
     _speechSilenceTimer?.cancel();
@@ -271,6 +307,14 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     }
   }
 
+  bool get _speechResultsAllowed =>
+      mounted &&
+      _stage == _Stage.home &&
+      !_suppressSpeechResults &&
+      !_isSwitchingMode &&
+      (_isFullAIChatMode || _speechEchoSessionActive) &&
+      !_isTtsSpeaking;
+
   void _listenToSpeechEvents() {
     _subscriptions.addAll([
       _speech.onSpeechStart.listen((_) {
@@ -280,14 +324,14 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         if (!mounted) return;
       }),
       _speech.onSpeechPartialResults.listen((event) {
-        if (!mounted) return;
+        if (!_speechResultsAllowed) return;
         final current = event.value.isEmpty ? '' : event.value.first.trim();
         if (current.isEmpty) return;
 
-        if (_appModeChoice == _AppModeChoice.fullAiChat) {
+        if (_isFullAIChatMode) {
           if (_isAIChatLoading || _isTtsSpeaking) return;
           final merged = Platform.isAndroid
-              ? _mergeSmartKeepPunct(_lastTranscript, current)
+              ? mergeTranscript(_lastTranscript, current)
               : current;
           _scheduleAIChatTimeout();
           setState(() {
@@ -312,8 +356,10 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           return;
         }
 
-        final merged = _mergeSmartKeepPunct(_lastTranscript, current);
-        _scheduleSpeechEchoTimeout();
+        final merged = mergeTranscript(_lastTranscript, current);
+        if (_appModeChoice != _AppModeChoice.sttOnly) {
+          _scheduleSpeechEchoTimeout();
+        }
         if (merged == _lastTranscript) return;
         setState(() {
           _lastTranscript = merged;
@@ -323,14 +369,14 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         });
       }),
       _speech.onSpeechResults.listen((event) {
-        if (!mounted) return;
+        if (!_speechResultsAllowed) return;
         final transcript = event.value.isEmpty ? '' : event.value.first.trim();
         if (transcript.isEmpty) return;
 
-        if (_appModeChoice == _AppModeChoice.fullAiChat) {
+        if (_isFullAIChatMode) {
           if (_isAIChatLoading || _isTtsSpeaking) return;
           final merged = Platform.isAndroid
-              ? _mergeSmartKeepPunct(_lastTranscript, transcript)
+              ? mergeTranscript(_lastTranscript, transcript)
               : transcript;
           setState(() {
             _lastTranscript = merged;
@@ -345,7 +391,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         if (_stage == _Stage.ttsTest || _stage == _Stage.modePicker) return;
         if (!_speechEchoSessionActive || _isTtsSpeaking) return;
         final merged = Platform.isAndroid
-            ? _mergeSmartKeepPunct(_lastTranscript, transcript)
+            ? mergeTranscript(_lastTranscript, transcript)
             : transcript;
         setState(() {
           _lastTranscript = merged;
@@ -353,7 +399,9 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           _currentSpeechSentence = merged;
           _message = 'Listening...';
         });
-        _scheduleSpeechEchoTimeout();
+        if (_appModeChoice != _AppModeChoice.sttOnly) {
+          _scheduleSpeechEchoTimeout();
+        }
       }),
       _speech.onSpeechError.listen((event) {
         if (!mounted) return;
@@ -385,13 +433,83 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     return wakeword.setKeywordDetectionLicense(license);
   }
 
+  Future<void> _startDemo() async {
+    _setupFailed = false;
+    await _runBusy(() async {
+      if (_licenseController.text.trim().isEmpty) await _loadBundledLicense();
+      await _ensureMicPermission();
+      if (Platform.isIOS) await _ensureSpeechRecognitionPermission();
+      if (!mounted) return;
+      await _initializeSpeechAndWakeWord(null);
+      if (!mounted) return;
+      await _speakStartupNarration([
+        'Hey there, My name is $_voiceName. In this application we will use my cloned voice in order to showcase our voice AI agent capabilities.',
+        "Don't worry. I will be your personal guide to walk you through this demonstration step by step.",
+        'First, please choose which voice you want to use. You can stay with me, $_voiceName, or switch to $_otherVoiceNames.',
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _stage = _Stage.voicePicker;
+        _message = '';
+      });
+    });
+  }
+
+  Future<void> _skipNarration() async {
+    final stop = _narration.skip(_speech.stopSpeaking);
+    setState(() {});
+    try {
+      await stop;
+    } catch (error) {
+      if (mounted) {
+        setState(() => _message = 'Could not stop narration: $error');
+      }
+    }
+  }
+
+  Future<void> _speakStartupNarration(List<String> lines) async {
+    _wakeWordArmed = false;
+    await _pauseWakeWordDetection();
+    await _speech.pauseSpeechRecognition();
+    await _applySelectedTtsVoice();
+    if (!mounted) return;
+    setState(() => _stage = _Stage.preparing);
+    final narrationTimer = Stopwatch()..start();
+    _log('Startup narration: beginning ${lines.length} lines');
+    await _narration.speak(
+      lines,
+      isActive: () => mounted,
+      speakLine: (line) async {
+        if (!mounted) return;
+        setState(() => _message = line);
+        await _speech.speak(_applyTtsTextPolicy(line), speed: _speakerSpeed);
+      },
+    );
+    _log(
+      'Startup narration: completed after ${narrationTimer.elapsedMilliseconds}ms',
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+  }
+
   Future<void> _continueFromVoicePicker() async {
     await _runBusy(() async {
+      if (_loadedTtsModel != _selectedTtsModel) {
+        await _speech.destroyAll();
+        await _initializeSpeech(null);
+      }
+      await _applySelectedTtsVoice();
+      await _speakStartupNarration([
+        _voiceChoice == _VoiceChoice.rich
+            ? 'Awesome, Thanks for choosing to stay with me.'
+            : 'Awesome, You chose $_voiceName.',
+        'The next phase, is setting speaker verification. You can create a new speaker signature, use a saved one, or skip this step.',
+      ]);
       await _loadSavedEnrollmentJson();
+      if (!mounted) return;
       setState(() {
         _message = _savedEnrollmentJson == null
-            ? 'Voice selected. Speaker verification can run next.'
-            : 'Saved speaker signature found.';
+            ? 'Create a speaker signature, or skip this step.'
+            : 'Saved speaker signature found. You can use it, create a new one, or skip speaker verification.';
         _stage = _Stage.svPrompt;
       });
     });
@@ -407,19 +525,28 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       setState(() => _message = 'Saved speaker signature was not found.');
       return;
     }
-    _enrollmentJsonPath = path;
-    setState(() {
-      _stage = _Stage.svStatus;
-      _svStatusPhase = _SVStatusPhase.verifying;
-      _svStatusCanContinue = false;
-      _message = 'Verify Speaker Identification Now';
+    await _runBusy(() async {
+      _enrollmentJsonPath = path;
+      setState(() {
+        _stage = _Stage.svStatus;
+        _svStatusPhase = _SVStatusPhase.verifying;
+        _svStatusCanContinue = false;
+        _message = 'Verify Speaker Identification Now';
+      });
+      try {
+        await _startSpeakerVerificationVerify(enrollmentJson);
+      } catch (_) {
+        await _stopSpeakerVerificationVerify();
+        _enrollmentJsonPath = null;
+        if (mounted) setState(() => _stage = _Stage.svPrompt);
+        rethrow;
+      }
     });
-    await _startSpeakerVerificationVerify(enrollmentJson);
   }
 
   Future<void> _skipSpeakerVerification() async {
     _enrollmentJsonPath = null;
-    await _initializeSpeechAndWakeWord(null);
+    await _finishSpeakerVerification();
   }
 
   Future<void> _runSpeakerVerificationOnboarding() async {
@@ -443,14 +570,14 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
 
       final errorSub = onSpeakerVerificationError((event) {
         if (event['controllerId'] != 'svMic1' || !mounted) return;
-        _log('SV error event: $event');
+
         setState(() {
           _message = 'Speaker verification error: ${event['error'] ?? event}';
         });
       });
       final progressSub = onSpeakerVerificationOnboardingProgress((event) {
         if (event['controllerId'] != 'svMic1' || !mounted) return;
-        _log('SV progress event: $event');
+
         setState(() {
           _svCollected = _readInt(event['collected'], _svCollected);
           _svTarget = _readInt(event['target'], _svTarget);
@@ -458,9 +585,16 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         });
       });
       final doneCompleter = Completer<String>();
+      // Native completion can fail before the sample loop reaches its final await.
+      unawaited(
+        doneCompleter.future.then<void>(
+          (_) {},
+          onError: (Object _, StackTrace _) {},
+        ),
+      );
       final doneSub = onSpeakerVerificationOnboardingDone((event) {
         if (event['controllerId'] != 'svMic1') return;
-        _log('SV done event: $event');
+
         final json =
             event['enrollmentJson'] ?? event['enrollment'] ?? event['json'];
         if (json is String && json.length > 10) {
@@ -517,8 +651,11 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
               beforeCollected,
               doneCompleter,
             );
-            await controller.getNextEmbeddingFromMic();
-            step = await stepFuture;
+            final results = await Future.wait<Object?>([
+              controller.getNextEmbeddingFromMic(),
+              stepFuture,
+            ], eagerError: true);
+            step = results[1] as _SVStepResult;
           }
           _log(
             'SV step result sample=$index result=$step collected=$_svCollected',
@@ -544,7 +681,16 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         });
 
         await _startSpeakerVerificationVerify(enrollmentJson);
+      } catch (_) {
+        await _stopSpeakerVerificationVerify();
+        _enrollmentJsonPath = null;
+        if (mounted) setState(() => _stage = _Stage.svPrompt);
+        rethrow;
       } finally {
+        if (identical(_svController, controller)) {
+          _svController = null;
+          await controller.destroy();
+        }
         await errorSub.cancel();
         await progressSub.cancel();
         await doneSub.cancel();
@@ -559,7 +705,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         _svStatusCanContinue = false;
       });
     }
-    await _initializeSpeechAndWakeWord(_enrollmentJsonPath);
+    await _finishSpeakerVerification();
   }
 
   Future<void> _startSpeakerVerificationVerify(String enrollmentJson) async {
@@ -601,7 +747,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
 
     _svVerifyErrorSub = onSpeakerVerificationError((event) {
       if (event['controllerId'] != controllerId || !mounted) return;
-      _log('SV verify error event: $event');
+
       setState(() {
         _message = 'SV error: ${event['error'] ?? event}';
       });
@@ -609,7 +755,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
 
     _svVerifyResultSub = onSpeakerVerificationVerifyResult((event) {
       if (event['controllerId'] != controllerId || !mounted) return;
-      _log('SV verify result event: $event');
+
       final nativeScore =
           _readDouble(event['scoreBest']) ??
           _readDouble(event['bestScore']) ??
@@ -650,95 +796,142 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   }
 
   Future<void> _initializeSpeechAndWakeWord(String? enrollmentJsonPath) async {
+    await _ensureMicPermission();
+    if (!mounted) return;
+    _wakeWordArmed = false;
+    await _wakewordSubscription?.cancel();
+    _wakewordSubscription = null;
+    final previous = _wakeword;
+    if (previous != null) {
+      await previous.stopKeywordDetection(_wakewordInstanceId);
+      await previous.destroyInstance();
+      _wakeword = null;
+      await _speech.destroyAll();
+      _loadedTtsModel = null;
+    }
+    if (!mounted) return;
+    setState(() => _message = 'Initializing wake word...');
+    _log('Initializing wake word instance $_wakewordInstanceId');
+    await setWakewordAudioRoutingConfig(_defaultAudioRoutingConfig);
+    await _speech.setAudioRoutingConfig(_defaultAudioRoutingConfig.toJson());
+    final wakeword = createKeyWordFlutterPCInstance(_wakewordInstanceId);
+    _wakeword = wakeword;
+    _log(
+      'createInstanceMulti model=$_wakewordModel threshold=$_wakewordThreshold buffer=$_wakewordBufferCount ms=$_wakewordMsBetweenCallbacks',
+    );
+    await wakeword.createInstanceMulti(
+      _wakewordInstanceId,
+      [_wakewordModel],
+      const [_wakewordThreshold],
+      const [_wakewordBufferCount],
+      const [_wakewordMsBetweenCallbacks],
+    );
+    _log('createInstanceMulti completed');
+    if (!mounted) {
+      await wakeword.destroyInstance();
+      return;
+    }
+    _wakewordSubscription = wakeword.onKeywordDetectionEvent().listen((event) {
+      if (!mounted) return;
+      final phrase = event['phrase']?.toString();
+      final model = event['model']?.toString();
+      unawaited(_handleWakeWord(phrase ?? model ?? _lastWakeWord));
+    });
+
+    _log('Applying wake-word license');
+    final wakewordLicensed = await _applyWakewordLicenseIfPresent(wakeword);
+    if (!wakewordLicensed) {
+      throw StateError(
+        'Wake-word license is not valid. Please contact info@davoice.io.',
+      );
+    }
+
+    if (!mounted) return;
+    _log('Applying Davoice license');
+    final speechLicensed = await _applyDavoiceLicenseIfPresent();
+    if (!speechLicensed) {
+      throw StateError(
+        'Davoice license is not valid. Please contact info@davoice.io.',
+      );
+    }
+
+    if (!mounted) return;
+    _log('Starting wake-word detection enrollmentJsonPath=$enrollmentJsonPath');
+    final wakewordStarted = await wakeword.startKeywordDetection(
+      _wakewordInstanceId,
+      _wakewordThreshold,
+      speakerVerificationEnrollmentJsonOrPath: enrollmentJsonPath,
+    );
+    if (!wakewordStarted) {
+      throw StateError('Wake-word detection failed to start.');
+    }
+    if (!mounted) {
+      await wakeword.stopKeywordDetection(_wakewordInstanceId);
+      return;
+    }
+    _log('Wake-word detection started; pausing before Speech.initAll');
+    await _pauseWakeWordDetection();
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+
+    await _initializeSpeech(enrollmentJsonPath);
+  }
+
+  Future<void> _initializeSpeech(String? enrollmentJsonPath) async {
+    if (!mounted) return;
+    setState(() => _message = 'Initializing speech engine...');
+    _appliedTtsVoice = null;
+    await _speech.initAll(
+      DavoiceInitAllOptions(
+        locale: _locale,
+        model: _selectedTtsModel,
+        onboardingJsonPath: enrollmentJsonPath,
+      ),
+    );
+    if (!mounted) {
+      await _speech.destroyAll();
+      return;
+    }
+    _loadedTtsModel = _selectedTtsModel;
+    await _applySelectedTtsVoice();
+    await _speech.pauseSpeechRecognition();
+  }
+
+  Future<void> _finishSpeakerVerification() async {
     await _runBusy(() async {
-      await _ensureMicPermission();
-      setState(() => _message = 'Initializing wake word...');
-      _log('Initializing wake word instance $_wakewordInstanceId');
-      if (Platform.isIOS) {
-        try {
-          _log('Setting iOS wake-word audio routing config');
-          await setWakewordAudioRoutingConfig(_defaultAudioRoutingConfig);
-        } catch (_) {}
-      }
-      final wakeword = createKeyWordFlutterPCInstance(_wakewordInstanceId);
-      _wakeword = wakeword;
-      _log(
-        'createInstanceMulti model=$_wakewordModel threshold=$_wakewordThreshold buffer=$_wakewordBufferCount ms=$_wakewordMsBetweenCallbacks',
-      );
-      await wakeword.createInstanceMulti(
-        _wakewordInstanceId,
-        [_wakewordModel],
-        const [_wakewordThreshold],
-        const [_wakewordBufferCount],
-        const [_wakewordMsBetweenCallbacks],
-      );
-      _log('createInstanceMulti completed');
-      _subscriptions.add(
-        wakeword.onKeywordDetectionEvent().listen((event) {
-          _log('wake-word event: $event');
-          final phrase = event['phrase']?.toString();
-          final model = event['model']?.toString();
-          _handleWakeWord(phrase ?? model ?? _lastWakeWord);
-        }),
-      );
-
-      _log('Applying wake-word license');
-      final wakewordLicensed = await _applyWakewordLicenseIfPresent(wakeword);
-      if (!wakewordLicensed) {
-        throw StateError(
-          'Wake-word license is not valid. Please contact info@davoice.io.',
+      final enrollment = _enrollmentJsonPath;
+      if (enrollment != null) {
+        await _speech.stopSpeaking();
+        await _speech.destroyAll();
+        await _initializeSpeech(enrollment);
+        if (!mounted) return;
+        final wakeword = _wakeword!;
+        await wakeword.stopKeywordDetection(_wakewordInstanceId);
+        final started = await wakeword.startKeywordDetection(
+          _wakewordInstanceId,
+          _wakewordThreshold,
+          speakerVerificationEnrollmentJsonOrPath: enrollment,
         );
+        if (!started) {
+          throw StateError(
+            'Wake-word detection with speaker verification failed to start.',
+          );
+        }
+        await _pauseWakeWordDetection();
       }
-
-      _log('Applying Davoice license');
-      final speechLicensed = await _applyDavoiceLicenseIfPresent();
-      if (!speechLicensed) {
-        throw StateError(
-          'Davoice license is not valid. Please contact info@davoice.io.',
-        );
-      }
-
-      _log(
-        'Starting wake-word detection enrollmentJsonPath=$enrollmentJsonPath',
-      );
-      final wakewordStarted = await wakeword.startKeywordDetection(
-        _wakewordInstanceId,
-        _wakewordThreshold,
-        speakerVerificationEnrollmentJsonOrPath: enrollmentJsonPath,
-      );
-      if (!wakewordStarted) {
-        throw StateError('Wake-word detection failed to start.');
-      }
-      _log('Wake-word detection started; pausing before Speech.initAll');
-      await _pauseWakeWordDetection();
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-
-      setState(() => _message = 'Initializing speech engine...');
-      _log(
-        'Speech.initAll model=$_selectedTtsModel enrollmentJsonPath=$enrollmentJsonPath',
-      );
-      await _speech.initAll(
-        DavoiceInitAllOptions(
-          locale: _locale,
-          model: _selectedTtsModel,
-          onboardingJsonPath: enrollmentJsonPath,
-        ),
-      );
-      _log('Speech.initAll completed');
-      await Future<void>.delayed(const Duration(milliseconds: 1000));
-      try {
-        _log('Pausing speech recognition after init');
-        await _speech.pauseSpeechRecognition();
-      } catch (_) {}
-      _log('Unpausing wake-word detection');
-      await Future<void>.delayed(const Duration(milliseconds: 1000));
-
+      if (!mounted) return;
+      await _speakStartupNarration([
+        enrollment == null
+            ? 'Speaker verification skipped.'
+            : 'Speaker verification is ready!',
+        'Now please say the wake word Hey Coach to continue.',
+      ]);
+      if (!mounted) return;
       await _unPauseWakeWordDetection();
-
+      if (!mounted) return;
       setState(() {
         _wakeWordArmed = true;
-        _message = 'Wake word is listening.';
         _stage = _Stage.home;
+        _message = 'Say the wake word "Hey Coach" to continue.';
       });
     });
   }
@@ -755,21 +948,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       return;
     }
 
-    if (_appModeChoice == _AppModeChoice.ttsTest) {
-      _speechSilenceTimer?.cancel();
-      setState(() {
-        _stage = _Stage.ttsTest;
-        _speechEchoSessionActive = false;
-        _isFullAIChatMode = false;
-        _isIntroSpeaking = false;
-        _isTtsSpeaking = false;
-        _introScript = '';
-        _currentSpeechSentence = '';
-        _message = 'TTS Test Mode';
-      });
-    } else {
-      await _enterFullAIChatMode();
-    }
+    await _continueAfterWakeWordModeChoice(_lastWakeWord);
   }
 
   Future<void> _handleWakeWord(String rawWakeWord) async {
@@ -786,6 +965,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       await _captureWakeWordRecordingPaths();
       await Future<void>.delayed(const Duration(milliseconds: 1000));
 
+      if (!mounted) return;
       final wakeWord = _formatWakeWord(rawWakeWord);
       setState(() {
         _lastWakeWord = wakeWord;
@@ -797,64 +977,176 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         try {
           await _speech.pauseSpeechRecognition();
         } catch (_) {}
+        await _speakStartupNarration([
+          '$wakeWord detected.',
+          'Now you can test the voice capabilities in four different ways. You can select a full AI Chat, or simply test Speech to Text and Text to Speech individually or a combination of both.',
+        ]);
+        if (!mounted) return;
         setState(() {
-          _appModeChoice = _AppModeChoice.ttsTest;
+          _appModeChoice = _AppModeChoice.combined;
           _pendingWakeWordForModeChoice = wakeWord;
           _stage = _Stage.modePicker;
-          _message = 'Choose what you want to test next.';
+          _message =
+              'Now you can choose from four options, a full AI Chat option, testing Speech to Text individually, testing Text to Speech individually, or a combination of both Speech to Text and Text to Speech.';
         });
         return;
       }
 
       await _continueAfterWakeWordModeChoice(wakeWord);
+    } catch (error) {
+      if (mounted) {
+        setState(() => _message = 'Wake-word session failed: $error');
+      }
+      _isHandlingWakeWord = false;
     } finally {
       if (!isFirstCall) _isHandlingWakeWord = false;
     }
   }
 
   Future<void> _continueAfterWakeWordModeChoice(String wakeWord) async {
-    if (_appModeChoice == _AppModeChoice.fullAiChat) {
-      await _enterFullAIChatMode();
-      return;
-    }
-
-    final selectedSpeakerName = _voiceName;
-    final introLine =
-        'Hello Guys, My name is $selectedSpeakerName, I am one of the coaches in the Lunafit app! I love helping people reach their fitness goals!';
-
-    try {
-      final speechUiEpoch = _beginSpeechUiEpoch();
-      await _pauseSpeechForTts();
+    _beginSpeechUiEpoch();
+    _speechSilenceTimer?.cancel();
+    _lastTranscript = '';
+    _partialTranscript = '';
+    _isAIChatLoading = false;
+    _chatHistory.clear();
+    _geminiConversation.clear();
+    if (_appModeChoice == _AppModeChoice.typeToTts) {
+      await _speech.pauseSpeechRecognition();
+      if (!mounted) return;
       setState(() {
-        _stage = _Stage.home;
+        _stage = _Stage.ttsTest;
+        _speechEchoSessionActive = false;
         _isFullAIChatMode = false;
-        _message = '$selectedSpeakerName is speaking...';
-        _speechEchoSessionActive = true;
-        _isIntroSpeaking = true;
-        _isTtsSpeaking = true;
-        _introScript = introLine;
-        _currentSpeechSentence = 'Intro Message: $introLine';
-        _lastTranscript = '';
-        _partialTranscript = '';
-      });
-      await _speakWhileSpeechPaused(
-        introLine,
-        speakerId: _speakerId,
-        speed: _speakerSpeed,
-      );
-      if (!_isSpeechUiEpochCurrent(speechUiEpoch)) return;
-      await _resumeSpeechAfterTts(const Duration(milliseconds: 500));
-      setState(() {
         _isIntroSpeaking = false;
         _isTtsSpeaking = false;
         _introScript = '';
         _currentSpeechSentence = '';
-        _message = 'Listening after "$wakeWord".';
+        _message = 'Type to TTS';
+      });
+      return;
+    }
+    if (_appModeChoice == _AppModeChoice.fullAiChat) {
+      await _enterFullAIChatMode();
+      return;
+    }
+    await _enterSttOnlyMode(wakeWord);
+    if (mounted && _appModeChoice == _AppModeChoice.combined) {
+      setState(
+        () => _message = 'Combined STT + TTS is active. Start speaking.',
+      );
+    }
+  }
+
+  Future<void> _selectMode(_AppModeChoice mode) async {
+    if (_isSwitchingMode || _stage != _Stage.modePicker) return;
+    final timer = Stopwatch()..start();
+    _log('Mode ${mode.name}: entering');
+    setState(() {
+      _isSwitchingMode = true;
+      _appModeChoice = mode;
+    });
+    try {
+      await _continueFromModePicker();
+      _log('Mode ${mode.name}: ready after ${timer.elapsedMilliseconds}ms');
+    } catch (error) {
+      _log(
+        'Mode ${mode.name}: failed after ${timer.elapsedMilliseconds}ms: $error',
+      );
+      if (mounted) setState(() => _message = 'Could not enter mode: $error');
+    } finally {
+      if (mounted) setState(() => _isSwitchingMode = false);
+    }
+  }
+
+  Future<void> _goBackToModeSelection() async {
+    if (_isSwitchingMode) return;
+    _isSwitchingMode = true;
+    _busyEpoch++;
+    _beginSpeechUiEpoch();
+    _speechSilenceTimer?.cancel();
+    _speechEchoSessionActive = false;
+    _isFullAIChatMode = false;
+    _wakeWordArmed = false;
+    _pendingWakeWordForModeChoice = null;
+    _isHandlingWakeWord = false;
+    _isAIChatLoading = false;
+    try {
+      await _speech.stopSpeaking();
+      await _speech.pauseSpeechRecognition();
+      if (!mounted) return;
+      setState(() {
+        _isBusy = false;
+        _isTtsSpeaking = false;
+        _isManualTtsSpeaking = false;
+        _isIntroSpeaking = false;
+        _lastTranscript = '';
+        _partialTranscript = '';
+        _currentSpeechSentence = '';
+        _aiChatResponse = '';
+        _introScript = '';
+        _stage = _Stage.modePicker;
+        _message = 'Choose what you want to test next.';
       });
     } catch (error) {
-      if (!mounted) return;
-      setState(() => _message = 'Wake-word speech flow failed: $error');
+      if (mounted) {
+        setState(() => _message = 'Could not stop the session: $error');
+      }
+    } finally {
+      _isSwitchingMode = false;
     }
+  }
+
+  Future<void> _stopPlayback() async {
+    _busyEpoch++;
+    final resume = _isFullAIChatMode || _speechEchoSessionActive;
+    final epoch = _beginSpeechUiEpoch();
+    await _speech.stopSpeaking();
+    if (!_isSpeechUiEpochCurrent(epoch)) return;
+    setState(() {
+      _isTtsSpeaking = false;
+      _isManualTtsSpeaking = false;
+      _isAIChatLoading = false;
+      _isBusy = false;
+    });
+    if (resume) await _resumeSpeechAfterTts();
+  }
+
+  void _showChatHistory() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(title: Text('Chat History')),
+            for (final message in _chatHistory)
+              ListTile(
+                title: Text(message['role'] == 'user' ? 'You' : 'Assistant'),
+                subtitle: Text(message['text']!),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _enterSttOnlyMode(String wakeWord) async {
+    _speechSilenceTimer?.cancel();
+    setState(() {
+      _stage = _Stage.home;
+      _isFullAIChatMode = false;
+      _speechEchoSessionActive = true;
+      _isIntroSpeaking = false;
+      _isTtsSpeaking = false;
+      _introScript = '';
+      _lastTranscript = '';
+      _partialTranscript = '';
+      _currentSpeechSentence = 'Listening...';
+      _message = 'STT Only is active after "$wakeWord".';
+    });
+    await _resumeSpeechAfterTts(const Duration(milliseconds: 300));
   }
 
   Future<void> _enterFullAIChatMode() async {
@@ -871,39 +1163,49 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       _currentSpeechSentence = 'Listening...';
       _aiChatResponse = '';
       _lastTranscript = '';
-      _lastProcessedAITranscript = '';
       _geminiConversation.clear();
     });
-    try {
-      await _speech.pauseSpeechRecognition();
-    } catch (_) {}
-    try {
-      await Future<void>.delayed(const Duration(milliseconds: 16));
-      await _speech.unPauseSpeechRecognition(-1);
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-    } catch (error) {
-      setState(() {
-        _message =
-            'Microphone did not reopen. Please choose mode and try again.';
-      });
-    }
+    await _speech.pauseSpeechRecognition();
+    await _resumeSpeechAfterTts();
   }
 
   Future<void> _answerLikeVoiceAssistant(String transcript) async {
     final cleaned = transcript.trim();
-    if (cleaned.isEmpty || _isAIChatLoading) return;
-    if (cleaned == _lastProcessedAITranscript) return;
-    _lastProcessedAITranscript = cleaned;
-    await _pauseSpeechForTts();
-    setState(() {
-      _isAIChatLoading = true;
-      _currentSpeechSentence = 'Gemini is thinking...';
-      _message = 'Sending transcript to Gemini...';
-      _partialTranscript = '';
-    });
+    if (cleaned.isEmpty ||
+        _isAIChatLoading ||
+        !_isFullAIChatMode ||
+        _stage != _Stage.home) {
+      return;
+    }
+    final now = DateTime.now();
+    if (_geminiBlockedUntil != null && now.isBefore(_geminiBlockedUntil!)) {
+      setState(
+        () => _message = 'Gemini is cooling down. Please try again shortly.',
+      );
+      return;
+    }
+    final epoch = _speechUiEpoch;
+    _isAIChatLoading = true;
+    _chatHistory.add({'role': 'user', 'text': cleaned});
     try {
-      final reply = await _generateGeminiReply(cleaned);
-      if (!mounted) return;
+      await _pauseSpeechForTts();
+      if (!_isSpeechUiEpochCurrent(epoch)) return;
+      setState(() {
+        _currentSpeechSentence = 'Gemini is thinking...';
+        _message = 'Sending transcript to Gemini...';
+        _partialTranscript = '';
+      });
+      final previous = _lastGeminiRequestAt;
+      if (previous != null) {
+        final wait =
+            const Duration(seconds: 4) - DateTime.now().difference(previous);
+        if (!wait.isNegative) await Future<void>.delayed(wait);
+      }
+      if (!_isSpeechUiEpochCurrent(epoch)) return;
+      _lastGeminiRequestAt = DateTime.now();
+      final reply = await _generateGeminiReply(cleaned, epoch);
+      if (!_isSpeechUiEpochCurrent(epoch)) return;
+      _chatHistory.add({'role': 'model', 'text': reply});
       setState(() {
         _aiChatResponse = reply;
         _currentSpeechSentence = 'Gemini: $reply';
@@ -916,14 +1218,19 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         speed: _speakerSpeed,
       );
     } catch (error) {
-      _log('Gemini error: $error');
-      if (!mounted) return;
+      if (!_isSpeechUiEpochCurrent(epoch)) return;
+      final raw = error.toString().toLowerCase();
+      if (raw.contains('429') ||
+          raw.contains('quota') ||
+          raw.contains('rate limit')) {
+        _geminiBlockedUntil = DateTime.now().add(const Duration(seconds: 30));
+      }
       final friendlyReply = _friendlyGeminiErrorMessage(error);
+      _chatHistory.add({'role': 'model', 'text': friendlyReply});
       setState(() {
         _aiChatResponse = friendlyReply;
-        _currentSpeechSentence = 'Gemini: $friendlyReply';
-        _message = 'Speaking Gemini status update...';
-        _lastTranscript = '';
+        _currentSpeechSentence = friendlyReply;
+        _message = 'Gemini is unavailable.';
       });
       try {
         await _speakWhileSpeechPaused(
@@ -931,23 +1238,22 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           speakerId: _speakerId,
           speed: _speakerSpeed,
         );
-      } catch (speakError) {
-        _log('Gemini fallback speech failed: $speakError');
+      } catch (_) {
+        // Keep the actionable error visible if status narration also fails.
       }
     } finally {
-      if (mounted) {
+      if (_isSpeechUiEpochCurrent(epoch)) {
         setState(() {
           _isAIChatLoading = false;
+          _isTtsSpeaking = false;
           _lastTranscript = '';
           _partialTranscript = '';
-          if (_isFullAIChatMode && !_isTtsSpeaking) {
-            _currentSpeechSentence = 'Listening...';
-            _message = 'Speak with Gemini.';
-          }
         });
+        if (_isFullAIChatMode && _stage == _Stage.home) {
+          await _resumeSpeechAfterTts();
+        }
       }
     }
-    await _resumeSpeechAfterTts();
   }
 
   static String _friendlyGeminiErrorMessage(Object error) {
@@ -986,7 +1292,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     return 'This demo uses Google Gemini as the backend language model. Unfortunately Gemini returned an error for this request, so I could not answer right now. Please try again in a moment.';
   }
 
-  Future<String> _generateGeminiReply(String userText) async {
+  Future<String> _generateGeminiReply(String userText, int epoch) async {
     final apiKey = _geminiApiKey;
     if (apiKey == null || apiKey.isEmpty) {
       throw StateError('Gemini API key was not loaded from local.config.ts.');
@@ -1005,11 +1311,15 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       },
     ];
 
-    final client = HttpClient();
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 30);
+    _activeGeminiClient = client;
     late final HttpClientResponse response;
     late final String body;
     try {
-      final request = await client.postUrl(uri);
+      final request = await client
+          .postUrl(uri)
+          .timeout(const Duration(seconds: 30));
       request.headers.contentType = ContentType.json;
       request.headers.set('x-goog-api-key', apiKey);
       request.write(
@@ -1031,10 +1341,14 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         }),
       );
 
-      response = await request.close();
-      body = await response.transform(utf8.decoder).join();
+      response = await request.close().timeout(const Duration(seconds: 60));
+      body = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 60));
     } finally {
       client.close(force: true);
+      if (identical(_activeGeminiClient, client)) _activeGeminiClient = null;
     }
 
     final payload = jsonDecode(body) as Map<String, dynamic>;
@@ -1042,8 +1356,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       final error = payload['error'];
       final message = error is Map ? error['message'] : null;
       throw StateError(
-        message?.toString() ??
-            'Gemini request failed with status ${response.statusCode}.',
+        'Gemini ${response.statusCode}: ${message ?? 'Request failed'}',
       );
     }
 
@@ -1061,7 +1374,10 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         .join(' ')
         .trim();
     if (text.isEmpty) throw StateError('Gemini returned an empty response.');
-    final normalized = _normalizeTextForSpeech(text);
+    final normalized = normalizeTextForSpeech(text);
+    if (!_isSpeechUiEpochCurrent(epoch)) {
+      throw StateError('Chat session ended.');
+    }
     _geminiConversation
       ..clear()
       ..addAll([
@@ -1079,6 +1395,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   Future<void> _speakManualText() async {
     final text = _ttsController.text.trim();
     if (text.isEmpty) return;
+    final epoch = _speechUiEpoch;
     await _runBusy(() async {
       setState(() {
         _isManualTtsSpeaking = true;
@@ -1091,7 +1408,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         speakerId: _speakerId,
         speed: _speakerSpeed,
       );
-      if (mounted) {
+      if (_isSpeechUiEpochCurrent(epoch)) {
         setState(() {
           _isManualTtsSpeaking = false;
           _isTtsSpeaking = false;
@@ -1104,10 +1421,13 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
 
   int _beginSpeechUiEpoch() {
     _speechUiEpoch += 1;
+    _suppressSpeechResults = false;
+    _activeGeminiClient?.close(force: true);
+    _activeGeminiClient = null;
     return _speechUiEpoch;
   }
 
-  bool _isSpeechUiEpochCurrent(int epoch) => _speechUiEpoch == epoch;
+  bool _isSpeechUiEpochCurrent(int epoch) => mounted && _speechUiEpoch == epoch;
 
   Future<void> _pauseSpeechForTts() async {
     _speechSilenceTimer?.cancel();
@@ -1127,17 +1447,57 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     required int speakerId,
     required double speed,
   }) async {
+    final epoch = _speechUiEpoch;
     await _pauseSpeechForTts();
-    await _speech.speak(text, speakerId: speakerId, speed: speed);
+    if (!_isSpeechUiEpochCurrent(epoch)) return;
+    await _applySelectedTtsVoice();
+    if (!_isSpeechUiEpochCurrent(epoch)) return;
+    await _speech.speak(
+      _applyTtsTextPolicy(text),
+      speakerId: speakerId,
+      speed: speed,
+    );
+  }
+
+  String _applyTtsTextPolicy(String text) {
+    return text
+        .replaceAll("DaVoice's", 'the voice')
+        .replaceAll('DaVoice', 'The Voice');
   }
 
   Future<void> _resumeSpeechAfterTts([
     Duration settleDelay = const Duration(milliseconds: 300),
   ]) async {
+    final epoch = _speechUiEpoch;
+    if (!mounted ||
+        _stage != _Stage.home ||
+        !(_isFullAIChatMode || _speechEchoSessionActive)) {
+      return;
+    }
+    _suppressSpeechResults = true;
     try {
       await _speech.unPauseSpeechRecognition(-1);
       await Future<void>.delayed(settleDelay);
-    } catch (_) {}
+      if (!_isSpeechUiEpochCurrent(epoch)) return;
+      if (Platform.isAndroid && _isFullAIChatMode) {
+        await _speech.isRecognizing();
+      }
+      if (!_isSpeechUiEpochCurrent(epoch)) return;
+      setState(() {
+        _isTtsSpeaking = false;
+        _message = 'Listening...';
+        _currentSpeechSentence = 'Listening...';
+      });
+    } catch (error) {
+      if (_isSpeechUiEpochCurrent(epoch)) {
+        setState(
+          () => _message =
+              'Microphone did not reopen. Choose Mode and try again.',
+        );
+      }
+    } finally {
+      if (_isSpeechUiEpochCurrent(epoch)) _suppressSpeechResults = false;
+    }
   }
 
   void _scheduleSpeechEchoTimeout() {
@@ -1152,7 +1512,6 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     _speechSilenceTimer = Timer(_speechSilenceTimeout, () {
       final text = _lastTranscript.trim();
       if (text.isEmpty || _isAIChatLoading || !_isFullAIChatMode) return;
-      _log('AIChat silence timeout reached, sending: $text');
       unawaited(_answerLikeVoiceAssistant(text));
     });
   }
@@ -1160,7 +1519,9 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   Future<void> _repeatTranscriptAfterSilence() async {
     if (!_speechEchoSessionActive || _isTtsSpeaking) return;
     final text = _lastTranscript.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || !_speechResultsAllowed || !_speechEchoSessionActive) {
+      return;
+    }
     final speechUiEpoch = _beginSpeechUiEpoch();
     setState(() {
       _currentSpeechSentence = 'Speaking now: $text';
@@ -1172,7 +1533,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       await _speakWhileSpeechPaused(
         text,
         speakerId: _speakerId,
-        speed: _adjustedSpeed(text, _speakerSpeed),
+        speed: _speakerSpeed,
       );
       if (!_isSpeechUiEpochCurrent(speechUiEpoch)) return;
       setState(() {
@@ -1184,7 +1545,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       });
       await _resumeSpeechAfterTts();
     } catch (error) {
-      if (!mounted) return;
+      if (!_isSpeechUiEpochCurrent(speechUiEpoch)) return;
       setState(() {
         _isTtsSpeaking = false;
         _message = 'Speech repeat failed: $error';
@@ -1212,16 +1573,20 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   }
 
   Future<void> _runBusy(Future<void> Function() action) async {
-    if (_isBusy) return;
+    if (_isBusy || !mounted) return;
+    final busyEpoch = ++_busyEpoch;
     setState(() => _isBusy = true);
     try {
       await action();
     } catch (error) {
       _log('ERROR: $error');
-      if (!mounted) return;
-      setState(() => _message = error.toString());
+      if (!mounted || busyEpoch != _busyEpoch) return;
+      setState(() {
+        _message = error.toString();
+        if (_stage == _Stage.preparing) _setupFailed = true;
+      });
     } finally {
-      if (mounted) setState(() => _isBusy = false);
+      if (mounted && busyEpoch == _busyEpoch) setState(() => _isBusy = false);
     }
   }
 
@@ -1249,21 +1614,6 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     _savedEnrollmentJson = enrollmentJson;
     _savedEnrollmentJsonPath = file.path;
     _log('loaded enrollment json len=${enrollmentJson.length}');
-  }
-
-  Future<void> _ensureStartupPermissions() async {
-    try {
-      await _ensureMicPermission();
-      if (Platform.isIOS) {
-        await _ensureSpeechRecognitionPermission();
-      }
-    } catch (error) {
-      _log('Startup permission error: $error');
-      if (!mounted) return;
-      setState(() {
-        _message = '$error';
-      });
-    }
   }
 
   Future<void> _ensureMicPermission() async {
@@ -1367,7 +1717,6 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     }
 
     final event = Map<String, dynamic>.from(payload);
-    _log('SV native step payload: $event');
 
     final collected = _readInt(event['collected'], _svCollected);
     final target = _readInt(event['target'], _svTarget);
@@ -1414,15 +1763,19 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   }
 
   Future<void> _pauseWakeWordDetection() async {
-    try {
-      await _wakeword?.pauseDetection(stopMic: false);
-    } catch (_) {}
+    final wakeword = _wakeword;
+    if (wakeword == null) return;
+    if (!await wakeword.pauseDetection(stopMic: Platform.isAndroid)) {
+      throw StateError('Could not pause wake-word detection.');
+    }
   }
 
   Future<void> _unPauseWakeWordDetection() async {
-    try {
-      await _wakeword?.unPauseDetection();
-    } catch (_) {}
+    final wakeword = _wakeword;
+    if (wakeword == null) return;
+    if (!await wakeword.unPauseDetection()) {
+      throw StateError('Could not resume wake-word detection.');
+    }
   }
 
   Future<void> _captureWakeWordRecordingPaths() async {
@@ -1437,32 +1790,71 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   }
 
   String get _selectedTtsModel {
-    if (_voiceChoice == _VoiceChoice.rich) {
-      return 'assets/models/model_ex_rich_fast.dm';
+    if (_usesSharedTtsModel) {
+      return 'assets/models/model_ex2_rich_hanna_ariana.dm';
     }
-    return 'assets/models/model_ex_ariana_fast.dm';
+    if (_voiceChoice == _VoiceChoice.rich) {
+      return 'assets/models/model_ex2_rich.dm';
+    }
+    return _voiceChoice == _VoiceChoice.hanna
+        ? 'assets/models/model_ex_hanna_light_davoice_ph.dm'
+        : 'assets/models/model_ex_ariana_fast_davoice_phoneme.dm';
   }
 
-  String get _wakewordModel {
-    return Platform.isAndroid
-        ? 'hey_coach_model_28_22012026b.onnx'
-        : 'hey_coach_model_28_22012026b.onnx';
+  String? _appliedTtsVoice;
+
+  Future<void> _applySelectedTtsVoice() async {
+    if (!_usesSharedTtsModel && _voiceChoice != _VoiceChoice.rich) return;
+    final voice = _voiceName;
+    if (_appliedTtsVoice == voice) return;
+    final result = await _speech.changeVoice(voice);
+    if (result != 0) {
+      throw StateError('Could not select the $voice voice.');
+    }
+    _appliedTtsVoice = voice;
   }
 
-  String get _speakerModel {
-    return Platform.isAndroid
-        ? 'speaker_model.dm'
-        : 'speaker_model.dm';
-  }
+  String get _wakewordModel => 'assets/models/hey_coach_model_28_22012026b.dm';
+  String get _speakerModel => 'assets/models/sv.dm';
 
   String get _voiceName {
-    return _voiceChoice == _VoiceChoice.rich ? 'Rich' : 'Ariana';
+    switch (_voiceChoice) {
+      case _VoiceChoice.hanna:
+        return 'Hanna';
+      case _VoiceChoice.ariana:
+        return 'Ariana';
+      case _VoiceChoice.rich:
+        return 'Rich';
+    }
+  }
+
+  String get _otherVoiceNames {
+    return _VoiceChoice.values
+        .where((voice) => voice != _voiceChoice)
+        .map(_voiceNameForChoice)
+        .join(' or ');
+  }
+
+  String _voiceNameForChoice(_VoiceChoice voice) {
+    switch (voice) {
+      case _VoiceChoice.hanna:
+        return 'Hanna';
+      case _VoiceChoice.ariana:
+        return 'Ariana';
+      case _VoiceChoice.rich:
+        return 'Rich';
+    }
   }
 
   double get _speakerSpeed {
-    return _voiceChoice == _VoiceChoice.rich
-        ? _richSpeakerSpeed
-        : _arianaSpeakerSpeed;
+    switch (_voiceChoice) {
+      case _VoiceChoice.hanna:
+        return _usesSharedTtsModel ? _hannaSpeakerSpeed : 0.9;
+      case _VoiceChoice.ariana:
+        return _usesSharedTtsModel ? _arianaSpeakerSpeed : 0.88;
+      case _VoiceChoice.rich:
+        return _richSpeakerSpeed;
+    }
   }
 
   static int _readInt(Object? value, int fallback) {
@@ -1474,85 +1866,6 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   static double? _readDouble(Object? value) {
     if (value is num) return value.toDouble();
     return double.tryParse(value?.toString() ?? '');
-  }
-
-  static String _mergeSmartKeepPunct(String previous, String current) {
-    final prev = previous.trim();
-    final curr = current.trim();
-    if (prev.isEmpty) return curr;
-    if (curr.isEmpty) return prev;
-    if (curr.startsWith(prev)) return curr;
-    if (prev.startsWith(curr)) return prev;
-
-    final prevNorm = _stripPunctuation(prev);
-    final currNorm = _stripPunctuation(curr);
-    if (currNorm.startsWith(prevNorm)) return curr;
-
-    final prevWords = prevNorm
-        .split(RegExp(r'\s+'))
-        .where((w) => w.isNotEmpty)
-        .toList();
-    final currWords = currNorm
-        .split(RegExp(r'\s+'))
-        .where((w) => w.isNotEmpty)
-        .toList();
-    final maxOverlap = prevWords.length < currWords.length
-        ? prevWords.length
-        : currWords.length;
-    var overlap = 0;
-    for (var count = maxOverlap; count >= 2; count -= 1) {
-      var matches = true;
-      for (var index = 0; index < count; index += 1) {
-        if (prevWords[prevWords.length - count + index] != currWords[index]) {
-          matches = false;
-          break;
-        }
-      }
-      if (matches) {
-        overlap = count;
-        break;
-      }
-    }
-
-    if (overlap > 0) {
-      final currParts = curr.split(RegExp(r'\s+'));
-      final tail = currParts.skip(overlap).join(' ');
-      if (tail.isEmpty) return prev;
-      final needsSpace =
-          RegExp(r'[A-Za-z0-9]$').hasMatch(prev) &&
-          RegExp(r'^[A-Za-z0-9]').hasMatch(tail);
-      return needsSpace ? '$prev $tail' : '$prev$tail';
-    }
-
-    return currNorm.length >= prevNorm.length ? curr : prev;
-  }
-
-  static String _stripPunctuation(String value) {
-    return value
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^\w\s]'), '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-  }
-
-  static double _adjustedSpeed(String text, double baseSpeed) {
-    final wordCount = text
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((w) => w.isNotEmpty)
-        .length;
-    if (wordCount <= 4) return baseSpeed * 0.5;
-    if (wordCount <= 8) return baseSpeed * 0.8;
-    return baseSpeed;
-  }
-
-  static String _normalizeTextForSpeech(String text) {
-    return text
-        .replaceAll(RegExp(r'\s*\n+\s*'), '. ')
-        .replaceAllMapped(RegExp(r'\s+([.!?,:;])'), (match) => match.group(1)!)
-        .replaceAllMapped(RegExp(r'([.!?,:;]){2,}'), (match) => match.group(1)!)
-        .replaceAll(RegExp(r'\s{2,}'), ' ')
-        .trim();
   }
 
   double _scoreForSVUI(double? score, bool nativeMatch) {
@@ -1606,6 +1919,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         .trim()
         .split(' ')
         .where((part) => part.isNotEmpty)
+        .takeWhile((part) => part.toLowerCase() != 'model')
         .map((part) => part[0].toUpperCase() + part.substring(1))
         .join(' ');
   }
@@ -1613,6 +1927,31 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      bottomNavigationBar:
+          (_stage == _Stage.home || _stage == _Stage.ttsTest) && !_wakeWordArmed
+          ? SafeArea(
+              child: Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 12,
+                children: [
+                  TextButton(
+                    onPressed: () => unawaited(_goBackToModeSelection()),
+                    child: const Text('Choose Mode'),
+                  ),
+                  if (_isTtsSpeaking || _isAIChatLoading)
+                    TextButton(
+                      onPressed: () => unawaited(_stopPlayback()),
+                      child: const Text('Stop'),
+                    ),
+                  if (_isFullAIChatMode)
+                    TextButton(
+                      onPressed: _showChatHistory,
+                      child: const Text('Chat History'),
+                    ),
+                ],
+              ),
+            )
+          : null,
       body: DecoratedBox(
         decoration: const BoxDecoration(color: _rnBackground),
         child: SafeArea(
@@ -1627,46 +1966,79 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
 
   Widget _buildStage(BuildContext context) {
     switch (_stage) {
-      case _Stage.voicePicker:
+      case _Stage.preparing:
         return _PromptShell(
           message: _message,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const _PromptTitle('Choose Voice Model'),
+              const _PromptTitle('Voice Demo'),
+              if (_isBusy) const LinearProgressIndicator(),
+              if (!_narration.skipped)
+                TextButton(
+                  onPressed: _skipNarration,
+                  child: const Text('Skip Narration'),
+                ),
+              if (_setupFailed && !_isBusy) ...[
+                TextField(
+                  controller: _licenseController,
+                  decoration: InputDecoration(
+                    labelText: 'Davoice license key',
+                    helperText: _licenseSource,
+                  ),
+                ),
+                _PrimaryButton(label: 'Retry setup', onPressed: _startDemo),
+              ],
+            ],
+          ),
+        );
+      case _Stage.voicePicker:
+        return _PromptShell(
+          message: _isBusy ? 'Preparing your voice...' : _message,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _PromptTitle('Choose Voice'),
+              const SizedBox(height: 10),
+              const SizedBox(height: 10),
+              const Text(
+                'Choose the voice for your demo.',
+                textAlign: TextAlign.center,
+                style: _Styles.body,
+              ),
               const SizedBox(height: 18),
               _OptionLabel('Voice'),
               _SegmentedButtons(
                 children: [
                   _ChoiceButton(
-                    label: 'Ariana',
-                    selected: _voiceChoice == _VoiceChoice.ariana,
-                    onPressed: () {
-                      setState(() => _voiceChoice = _VoiceChoice.ariana);
-                    },
+                    label: 'Hanna',
+                    selected: _voiceChoice == _VoiceChoice.hanna,
+                    onPressed: _isBusy
+                        ? null
+                        : () {
+                            setState(() => _voiceChoice = _VoiceChoice.hanna);
+                          },
                   ),
                   _ChoiceButton(
                     label: 'Rich',
                     selected: _voiceChoice == _VoiceChoice.rich,
-                    onPressed: () {
-                      setState(() => _voiceChoice = _VoiceChoice.rich);
-                    },
+                    onPressed: _isBusy
+                        ? null
+                        : () {
+                            setState(() => _voiceChoice = _VoiceChoice.rich);
+                          },
+                  ),
+                  _ChoiceButton(
+                    label: 'Ariana',
+                    selected: _voiceChoice == _VoiceChoice.ariana,
+                    onPressed: _isBusy
+                        ? null
+                        : () {
+                            setState(() => _voiceChoice = _VoiceChoice.ariana);
+                          },
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
-              TextField(
-                controller: _licenseController,
-                decoration: const InputDecoration(
-                  labelText: 'Davoice license key',
-                  hintText: 'Optional for local testing',
-                  border: OutlineInputBorder(),
-                ),
-                minLines: 1,
-                maxLines: 3,
-              ),
-              const SizedBox(height: 8),
-              Text(_licenseSource, style: _Styles.small),
               const SizedBox(height: 18),
               _PrimaryButton(
                 label: _isBusy ? 'Preparing...' : 'Continue',
@@ -1787,40 +2159,50 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         );
       case _Stage.modePicker:
         return _PromptShell(
-          message: _message,
+          message: _isSwitchingMode
+              ? 'Opening mode...'
+              : _message.startsWith('Could not')
+              ? _message
+              : '',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const _PromptTitle('Choose Next Area'),
-              const SizedBox(height: 10),
-              const Text(
-                'After voice selection, choose what you want to test next.',
-                style: _Styles.body,
-              ),
+              const _PromptTitle('Choose Mode'),
               const SizedBox(height: 18),
               _ModeButton(
                 title: 'Full AI Chat',
-                description:
-                    'Use STT text as the AI prompt, then speak the reply with the selected TTS voice.',
+                description: 'STT → Gemini → TTS',
                 selected: _appModeChoice == _AppModeChoice.fullAiChat,
                 onPressed: () {
-                  setState(() => _appModeChoice = _AppModeChoice.fullAiChat);
+                  unawaited(_selectMode(_AppModeChoice.fullAiChat));
                 },
               ),
               const SizedBox(height: 10),
               _ModeButton(
-                title: 'Manual TTS Test',
-                description:
-                    'Skip AI and keep the current text-to-speech playground.',
-                selected: _appModeChoice == _AppModeChoice.ttsTest,
+                title: 'Combined STT + TTS',
+                description: 'Speak → hear it back',
+                selected: _appModeChoice == _AppModeChoice.combined,
                 onPressed: () {
-                  setState(() => _appModeChoice = _AppModeChoice.ttsTest);
+                  unawaited(_selectMode(_AppModeChoice.combined));
                 },
               ),
-              const SizedBox(height: 18),
-              _PrimaryButton(
-                label: 'Continue',
-                onPressed: () => _continueFromModePicker(),
+              const SizedBox(height: 10),
+              _ModeButton(
+                title: 'STT Only',
+                description: 'Show transcript, no playback',
+                selected: _appModeChoice == _AppModeChoice.sttOnly,
+                onPressed: () {
+                  unawaited(_selectMode(_AppModeChoice.sttOnly));
+                },
+              ),
+              const SizedBox(height: 10),
+              _ModeButton(
+                title: 'Type to TTS',
+                description: 'Type text → hear it spoken',
+                selected: _appModeChoice == _AppModeChoice.typeToTts,
+                onPressed: () {
+                  unawaited(_selectMode(_AppModeChoice.typeToTts));
+                },
               ),
             ],
           ),
@@ -1831,7 +2213,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           controller: _ttsController,
           isSpeaking: _isManualTtsSpeaking || _isBusy,
           onSpeak: () => _speakManualText(),
-          onBack: () => setState(() => _stage = _Stage.modePicker),
+          onBack: () => unawaited(_goBackToModeSelection()),
           onClear: _ttsController.clear,
         );
       case _Stage.home:
@@ -1839,6 +2221,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           message: _message,
           voiceName: _voiceName,
           wakeWord: _lastWakeWord,
+          speechMode: _speechEchoSessionActive ? _appModeChoice : null,
           isFullAIChatMode: _isFullAIChatMode,
           currentSpeechSentence: _currentSpeechSentence,
           introScript: _introScript,
@@ -1859,26 +2242,26 @@ class _PromptShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      key: ValueKey(message),
-      padding: const EdgeInsets.fromLTRB(22, 14, 22, 28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          const _Logo(),
-          const SizedBox(height: 20),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: _rnCard,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: _rnSoftBorder),
-              ),
-              child: Padding(
+    return SizedBox.expand(
+      child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.fromLTRB(24, 14, 24, 32),
+        child: Column(
+          children: [
+            const _Logo(),
+            const SizedBox(height: 24),
+            Center(
+              child: Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(maxWidth: 420),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 24,
                   vertical: 28,
+                ),
+                decoration: BoxDecoration(
+                  color: _rnCard,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: _rnSoftBorder),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1896,9 +2279,8 @@ class _PromptShell extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1909,6 +2291,7 @@ class _HomeScreen extends StatelessWidget {
     required this.message,
     required this.voiceName,
     required this.wakeWord,
+    required this.speechMode,
     required this.isFullAIChatMode,
     required this.currentSpeechSentence,
     required this.introScript,
@@ -1921,6 +2304,7 @@ class _HomeScreen extends StatelessWidget {
   final String message;
   final String voiceName;
   final String wakeWord;
+  final _AppModeChoice? speechMode;
   final bool isFullAIChatMode;
   final String currentSpeechSentence;
   final String introScript;
@@ -1931,90 +2315,43 @@ class _HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(22, 14, 22, 28),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 460),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const _Logo(),
-              const SizedBox(height: 18),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: _rnCard,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _rnSoftBorder),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 32,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text('VOICE DEMO', style: _Styles.label),
-                      const SizedBox(height: 12),
-                      Text(
-                        isFullAIChatMode
-                            ? 'Speak With Gemini\n$_geminiModel'
-                            : 'Say "$wakeWord"',
-                        textAlign: TextAlign.center,
-                        style: _Styles.title,
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        message,
-                        textAlign: TextAlign.center,
-                        style: _Styles.body,
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        voiceName,
-                        textAlign: TextAlign.center,
-                        style: _Styles.bodyStrong,
-                      ),
-                      if (introScript.isNotEmpty) ...[
-                        const SizedBox(height: 18),
-                        _InfoBlock(
-                          label: introSpeaking ? '$voiceName Says' : 'Intro',
-                          value: introScript,
-                        ),
-                      ],
-                      if (currentSpeechSentence.isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        _InfoBlock(
-                          label: 'Current',
-                          value: currentSpeechSentence,
-                        ),
-                      ],
-                      if (aiChatResponse.isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        _InfoBlock(label: 'Gemini', value: aiChatResponse),
-                      ],
-                      if (partialTranscript.isNotEmpty ||
-                          lastTranscript.isNotEmpty) ...[
-                        const SizedBox(height: 18),
-                        if (partialTranscript.isNotEmpty)
-                          _InfoBlock(
-                            label: 'Listening',
-                            value: partialTranscript,
-                          ),
-                        if (lastTranscript.isNotEmpty)
-                          _InfoBlock(
-                            label: 'Last Transcript',
-                            value: lastTranscript,
-                          ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+    final active = isFullAIChatMode || speechMode != null;
+    final title = isFullAIChatMode
+        ? 'Full AI Chat'
+        : speechMode == _AppModeChoice.combined
+        ? 'Combined STT + TTS'
+        : speechMode == _AppModeChoice.sttOnly
+        ? 'STT Only'
+        : 'Say "$wakeWord"';
+    return _PromptShell(
+      message: '',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _PromptTitle(title),
+          if (!active) ...[
+            const SizedBox(height: 12),
+            Text(message, textAlign: TextAlign.center, style: _Styles.body),
+          ] else ...[
+            _InfoBlock(label: 'Speaker', value: voiceName),
+            _InfoBlock(label: 'Status', value: message),
+            _InfoBlock(
+              label: isFullAIChatMode ? 'Transcript' : 'Current sentence',
+              value: partialTranscript.isNotEmpty
+                  ? partialTranscript
+                  : currentSpeechSentence.isNotEmpty
+                  ? currentSpeechSentence
+                  : 'Listening...',
+            ),
+            if (isFullAIChatMode && aiChatResponse.isNotEmpty)
+              _InfoBlock(label: 'Gemini reply', value: aiChatResponse),
+            if (!isFullAIChatMode &&
+                lastTranscript.isNotEmpty &&
+                lastTranscript != partialTranscript &&
+                lastTranscript != currentSpeechSentence)
+              _InfoBlock(label: 'Last sentence', value: lastTranscript),
+          ],
+        ],
       ),
     );
   }
@@ -2039,63 +2376,41 @@ class _TtsTestScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(22, 14, 22, 28),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    return _PromptShell(
+      message: '',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _PromptTitle('TTS Test Mode'),
+          const SizedBox(height: 8),
+          Text(voiceName, textAlign: TextAlign.center, style: _Styles.body),
+          const SizedBox(height: 20),
+          TextField(
+            controller: controller,
+            minLines: 5,
+            maxLines: 10,
+            decoration: const InputDecoration(
+              hintText: 'Write text to speak...',
+            ),
+          ),
+          const SizedBox(height: 16),
+          _PrimaryButton(
+            label: isSpeaking ? 'Speaking...' : 'Speak',
+            onPressed: isSpeaking ? null : onSpeak,
+          ),
+          const SizedBox(height: 10),
+          Row(
             children: [
-              const _Logo(),
-              const SizedBox(height: 18),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: _rnCard,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _rnSoftBorder),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 28,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const _PromptTitle('TTS Test Mode'),
-                      const SizedBox(height: 8),
-                      Text(voiceName, style: _Styles.body),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: controller,
-                        minLines: 6,
-                        maxLines: 12,
-                        decoration: const InputDecoration(
-                          hintText: 'Write text to speak...',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          _PrimaryButton(
-                            label: isSpeaking ? 'Speaking...' : 'Speak',
-                            onPressed: isSpeaking ? null : onSpeak,
-                          ),
-                          _SecondaryButton(label: 'Clear', onPressed: onClear),
-                          _SecondaryButton(label: 'Back', onPressed: onBack),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
+              Expanded(
+                child: _SecondaryButton(label: 'Clear', onPressed: onClear),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _SecondaryButton(label: 'Back', onPressed: onBack),
               ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
@@ -2112,7 +2427,7 @@ class _Logo extends StatelessWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: const Color(0x85101a2f),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(28),
             border: Border.all(color: const Color(0x33ffffff)),
             boxShadow: const [
               BoxShadow(
@@ -2126,7 +2441,8 @@ class _Logo extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Image.asset(
               'assets/images/logo.jpeg',
-              height: 72,
+              height: 86,
+              width: 270,
               fit: BoxFit.contain,
             ),
           ),
@@ -2188,7 +2504,7 @@ class _ChoiceButton extends StatelessWidget {
 
   final String label;
   final bool selected;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -2217,8 +2533,8 @@ class _ModeButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return OutlinedButton(
       style: OutlinedButton.styleFrom(
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.all(14),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         side: BorderSide(
           color: selected ? const Color(0x66ffffff) : const Color(0x4dffffff),
@@ -2229,11 +2545,11 @@ class _ModeButton extends StatelessWidget {
       ),
       onPressed: onPressed,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(title, style: _Styles.bodyStrong),
+          Text(title, textAlign: TextAlign.center, style: _Styles.bodyStrong),
           const SizedBox(height: 4),
-          Text(description, style: _Styles.small),
+          Text(description, textAlign: TextAlign.center, style: _Styles.small),
         ],
       ),
     );
