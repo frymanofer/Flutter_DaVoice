@@ -210,3 +210,7 @@ from pub.dev without sibling path overrides. Both packages passed analysis,
 unit tests, and `flutter pub publish --dry-run` with zero warnings immediately
 before publication. Pub.dev accepted both uploads and its package API reports
 the new versions as latest.
+
+The valid `example/licensekey.txt` is an intentionally public temporary demo
+license. Commit it with the example so users can run the public app immediately.
+Do not reproduce the license value in context files, logs, or responses.

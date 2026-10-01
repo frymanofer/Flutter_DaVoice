@@ -332,8 +332,10 @@ passed analysis and 16 tests; wakeword passed analysis and 5 tests. Both publish
 dry-runs completed with zero warnings. Pub.dev accepted each upload and its API
 reported these versions as latest. The example now resolves 0.0.6/0.0.45 as
 hosted pub.dev dependencies with no local path overrides. Analyzer and all eight
-example tests passed against the downloaded packages. Do not
-publish or expose `example/licensekey.txt`; it contains the working app license.
+example tests passed against the downloaded packages. The user explicitly
+confirmed that `example/licensekey.txt` is a temporary demo license intended for
+the public repository. Keep it committed, while avoiding unnecessary copies of
+its value in notes, logs, or responses.
 
 Validation: initial Android debug APK and iOS simulator app builds passed with
 local wrappers. Speech package: 12 tests passed; wakeword package: 4 tests passed;
