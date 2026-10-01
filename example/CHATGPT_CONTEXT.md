@@ -205,7 +205,8 @@ on API 23. See `android_version_issues.md` for the subsystem matrix.
 
 The aligned wrappers are published on pub.dev as `flutter_davoice 0.0.6` and
 `flutter_wake_word 0.0.45`. Their release commits are pushed to each wrapper's
-`main` branch. The example declares these hosted versions and retains sibling
+private GitHub `main` branch. The public package archives contain the reviewed
+wrapper source and bundled binaries. The example declares these hosted versions and retains sibling
 path overrides for local wrapper development. Both packages passed analysis,
 unit tests, and `flutter pub publish --dry-run` with zero warnings immediately
 before publication. Pub.dev accepted both uploads and its package API reports

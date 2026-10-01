@@ -326,7 +326,8 @@ Published the aligned wrappers to pub.dev:
 - `flutter_wake_word 0.0.45`, source commit
   `59181aed96c0771be17b4a6e486d770786085d1c`
 
-Both commits are on their public GitHub `main` branches. Before upload, speech
+Both commits are on their private GitHub `main` branches; the pub.dev package
+archives themselves are public. Before upload, speech
 passed analysis and 16 tests; wakeword passed analysis and 5 tests. Both publish
 dry-runs completed with zero warnings. Pub.dev accepted each upload and its API
 reported these versions as latest. The example's hosted constraints now name
