@@ -35,9 +35,8 @@ package/app migration; it is not an API inside the speech or wakeword wrappers.
 
 ## Verified baseline
 
-- Flutter declares `flutter_davoice: 0.0.5`, `flutter_wake_word: 0.0.44`.
-  Tracked `pubspec.yaml` dependency overrides now resolve both to the sibling repositories for local
-  development. Sibling manifests have those same versions.
+- Flutter declares the public hosted releases `flutter_davoice: 0.0.6` and
+  `flutter_wake_word: 0.0.45`. The example has no local path overrides.
 - RN manifest and installed packages now use `react-native-davoice: 1.0.102`
   and `react-native-wakeword: 1.1.154`. The live sibling wrapper manifests are
   newer working trees: TTSNPM 1.0.395 and WakeWordRNNPM 1.1.156.
@@ -206,8 +205,8 @@ on API 23. See `android_version_issues.md` for the subsystem matrix.
 The aligned wrappers are published on pub.dev as `flutter_davoice 0.0.6` and
 `flutter_wake_word 0.0.45`. Their release commits are pushed to each wrapper's
 private GitHub `main` branch. The public package archives contain the reviewed
-wrapper source and bundled binaries. The example declares these hosted versions and retains sibling
-path overrides for local wrapper development. Both packages passed analysis,
+wrapper source and bundled binaries. The example resolves these versions directly
+from pub.dev without sibling path overrides. Both packages passed analysis,
 unit tests, and `flutter pub publish --dry-run` with zero warnings immediately
 before publication. Pub.dev accepted both uploads and its package API reports
 the new versions as latest.

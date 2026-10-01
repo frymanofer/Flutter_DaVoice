@@ -330,8 +330,9 @@ Both commits are on their private GitHub `main` branches; the pub.dev package
 archives themselves are public. Before upload, speech
 passed analysis and 16 tests; wakeword passed analysis and 5 tests. Both publish
 dry-runs completed with zero warnings. Pub.dev accepted each upload and its API
-reported these versions as latest. The example's hosted constraints now name
-0.0.6/0.0.45 while local path overrides remain active for development. Do not
+reported these versions as latest. The example now resolves 0.0.6/0.0.45 as
+hosted pub.dev dependencies with no local path overrides. Analyzer and all eight
+example tests passed against the downloaded packages. Do not
 publish or expose `example/licensekey.txt`; it contains the working app license.
 
 Validation: initial Android debug APK and iOS simulator app builds passed with

@@ -30,7 +30,8 @@ point. See `API_PARITY.md` for the first app-driven comparison.
   Android no-op matches RN. Implement Android wakeword config parsing/refresh.
 - [x] Expand typed wakeword config for HD/fallback, playback/STT ducking, AEC and
   during-TTS sensitivity; add wire-contract regression tests.
-- [x] Wire local sibling dependencies with tracked pubspec dependency overrides.
+- [x] Publish the aligned wrappers and make the public example resolve them from
+  pub.dev without machine-specific sibling path overrides.
 - [x] Fix type-to-TTS selection after the first wakeword entering combined mode.
 - [ ] Validate real ex2 inference, named-voice audio, switching and failure handling
   on both physical platforms. Compilation and mocked channels do not prove these.
