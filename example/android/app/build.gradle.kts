@@ -5,6 +5,9 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Flutter's current template defaults to API 24, but Davoice supports API 23.
+val davoiceMinSdk = 23
+
 android {
     namespace = "com.davoice.flutter_davoice_example"
     compileSdk = flutter.compileSdkVersion
@@ -24,7 +27,7 @@ android {
         applicationId = "com.davoice.flutter_davoice_example"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 29
+        minSdk = davoiceMinSdk
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

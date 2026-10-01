@@ -18,13 +18,20 @@ dependencies:
   flutter:
     sdk: flutter
 
-  flutter_davoice: 0.0.5
-  flutter_wake_word: 0.0.44
+  flutter_davoice: 0.0.6
+  flutter_wake_word: 0.0.45
 
   path_provider: ^2.1.5
   permission_handler: ^12.0.1
 
   cupertino_icons: ^1.0.8
+
+# Local alignment requires the sibling wrappers containing the new bridge APIs.
+dependency_overrides:
+  flutter_davoice:
+    path: ../../FlutterPubDavoicePrivate
+  flutter_wake_word:
+    path: ../../flutter_wake_word_lib
 
 dev_dependencies:
   integration_test:
