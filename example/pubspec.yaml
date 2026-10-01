@@ -26,13 +26,6 @@ dependencies:
 
   cupertino_icons: ^1.0.8
 
-# Local alignment requires the sibling wrappers containing the new bridge APIs.
-dependency_overrides:
-  flutter_davoice:
-    path: ../../FlutterPubDavoicePrivate
-  flutter_wake_word:
-    path: ../../flutter_wake_word_lib
-
 dev_dependencies:
   integration_test:
     sdk: flutter

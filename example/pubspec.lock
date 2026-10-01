@@ -105,9 +105,10 @@ packages:
   flutter_davoice:
     dependency: "direct main"
     description:
-      path: "../../FlutterPubDavoicePrivate"
-      relative: true
-    source: path
+      name: flutter_davoice
+      sha256: "2ab83b20b808ddfd486bf9c1318dba7b02e74b5490e1099b54b2634dfb689156"
+      url: "https://pub.dev"
+    source: hosted
     version: "0.0.6"
   flutter_driver:
     dependency: transitive
@@ -130,9 +131,10 @@ packages:
   flutter_wake_word:
     dependency: "direct main"
     description:
-      path: "../../flutter_wake_word_lib"
-      relative: true
-    source: path
+      name: flutter_wake_word
+      sha256: "7955d7d3cbaef3372b7a7a5b8aa47e02d0ff3e7af5c958edab67542cde04cc43"
+      url: "https://pub.dev"
+    source: hosted
     version: "0.0.45"
   flutter_web_plugins:
     dependency: transitive
