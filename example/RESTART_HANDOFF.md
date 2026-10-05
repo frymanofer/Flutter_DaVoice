@@ -1,7 +1,15 @@
 # Restart handoff
 
-Updated: 2026-10-01. This is the shortest authoritative starting point after an
+Updated: 2026-10-05. This is the shortest authoritative starting point after an
 editor/session restart. Read the linked detailed files before changing behavior.
+
+2026-10-05 RN recheck: Flutter now includes the RN wrapper's typed app-wide
+`AEC.mode` contract and the example matches RN's active legacy AEC false/false
+policy. The live Flutter native artifacts exactly match the current RN wrapper
+artifacts; stale TTS AAR checksum sidecars were corrected. Both AAR manifests
+and required ARM64 objects remain API 23-compatible. Wrapper tests, example
+tests, Android debug build, and iOS simulator build pass. RN's fifth Local AI
+Chat mode still belongs to the separate TTSLLM package migration.
 
 2026-10-01 follow-up: the full TTS build found API-24 collection/Optional calls.
 They were replaced with API-23-safe equivalents without desugaring or lint

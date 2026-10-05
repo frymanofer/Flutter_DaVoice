@@ -118,6 +118,20 @@ point. See `API_PARITY.md` for the first app-driven comparison.
 - [ ] Scope the new RN Local AI Chat/TTSLLM work as a separate Flutter package
   and example-app migration if that fifth mode is required.
 
+## Latest RN recheck (2026-10-05)
+
+- [x] Fetch and compare current RN example and wrapper remote refs while
+  preserving live uncommitted changes.
+- [x] Add the RN wakeword wrapper's app-wide `AEC.mode` typed contract.
+- [x] Match the RN example's active legacy AEC false/false setting.
+- [x] Verify Flutter's live native artifacts match the RN wrapper artifacts and
+  correct stale TTS Maven checksum sidecars.
+- [x] Confirm refreshed Android manifests and required ARM64 objects remain API 23.
+- [x] Pass wrapper analysis/tests plus local-wrapper Android debug and iOS
+  simulator builds.
+- [ ] Implement Local AI Chat only as a separate Flutter LLM package migration;
+  it is not part of `flutter_davoice` or `flutter_wake_word`.
+
 ## Current RN voice update
 
 - [x] Rich default and dedicated ex2 model; Hanna/Ariana legacy ex models.

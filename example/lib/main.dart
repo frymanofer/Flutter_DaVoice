@@ -108,7 +108,7 @@ const _defaultAudioRoutingConfig = AudioRoutingConfig(
     onUnpause: AudioRoutingOverride(options: [WakewordAudioOption.duckOthers]),
     onPause: AudioRoutingOverride(notifyOthers: true),
   ),
-  wakewordAEC: WakewordAECConfig(regular: false, duringTTS: true),
+  wakewordAEC: WakewordAECConfig(regular: false, duringTTS: false),
   wakeWordDuringTTS: WakeWordDuringTTSConfig(threshold: 0.9, bufferCount: 1),
 );
 

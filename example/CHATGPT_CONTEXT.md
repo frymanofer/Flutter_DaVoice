@@ -1,6 +1,6 @@
 # Flutter example context
 
-Last verified: 2026-09-30. Read `MEMORY.md` for evidence/history and
+Last verified: 2026-10-05. Read `MEMORY.md` for evidence/history and
 `ALIGNMENT_PLAN.md` for remaining work. Update these files throughout alignment.
 For a fresh editor/session, start with `RESTART_HANDOFF.md`; it contains the
 latest API-23 conclusions and safe continuation order.
@@ -35,11 +35,11 @@ package/app migration; it is not an API inside the speech or wakeword wrappers.
 
 ## Verified baseline
 
-- Flutter declares the public hosted releases `flutter_davoice: 0.0.6` and
-  `flutter_wake_word: 0.0.45`. The example has no local path overrides.
-- RN manifest and installed packages now use `react-native-davoice: 1.0.102`
-  and `react-native-wakeword: 1.1.154`. The live sibling wrapper manifests are
-  newer working trees: TTSNPM 1.0.395 and WakeWordRNNPM 1.1.156.
+- Flutter declares the public hosted releases `flutter_davoice: 0.0.7` and
+  `flutter_wake_word: 0.0.46`. The example has no local path overrides.
+- RN manifest and installed packages now use `react-native-davoice: 1.0.103`
+  and `react-native-wakeword: 1.1.156`. The live sibling wrapper manifests are
+  newer: TTSNPM 1.0.401 and WakeWordRNNPM 1.1.160.
   Older context files contain obsolete versions and packaging claims.
 - Existing uncommitted Flutter changes already add Hanna, lite/heavy selection,
   and full AI chat, combined STT+TTS, STT-only, and type-to-TTS modes. Default
@@ -214,3 +214,27 @@ the new versions as latest.
 The valid `example/licensekey.txt` is an intentionally public temporary demo
 license. Commit it with the example so users can run the public app immediately.
 Do not reproduce the license value in context files, logs, or responses.
+
+## Latest RN recheck (2026-10-05)
+
+Fetched all remote refs without changing the dirty RN working trees. RN example
+`main` remains at `9dc9dc6`; its live app added a fifth Local AI Chat mode through
+the separate `react-native-davoice-llm` / `TTSLLM` package. The existing four
+Flutter modes still match their RN counterparts. Local AI remains a distinct
+future Flutter package and app migration.
+
+The October 4 RN speech release mainly committed APIs and transition behavior
+already ported into Flutter 0.0.6. The wakeword release added typed app-wide
+`AEC.mode` (`off`, `duringTTS`, `always`). Flutter wakeword now serializes that
+contract through `AECConfig`, with native precedence over legacy `WakewordAEC`.
+The Flutter example's active legacy config now matches RN exactly: both regular
+and during-TTS AEC are false.
+
+The live Flutter AARs and XCFrameworks match the corresponding live RN wrapper
+artifacts byte-for-byte. The refreshed TTS Maven checksum sidecars were stale and
+have been corrected. Both AAR manifests declare API 23; every required ARM64
+native object reports API 23 or lower. Local-wrapper Android debug and iOS
+simulator builds pass. See `MEMORY.md` for hashes and test counts.
+
+The rechecked artifacts and AEC API are published as `flutter_davoice 0.0.7`
+and `flutter_wake_word 0.0.46`; the public example resolves those hosted versions.

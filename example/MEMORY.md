@@ -404,3 +404,37 @@ and model-copy verification. No Flutter build, inference, device run, or functio
 parity claim. Next: local dependency overrides and full bridge/packaging inventory,
 then implement named voice switching and select ex2. Keep native-source changes
 outside routine alignment; record concrete blockers if one is discovered.
+
+## 2026-10-05 — latest RN parity recheck
+
+Fetched current remote refs without modifying the RN working trees. The RN app
+remote remains `9dc9dc6`; TTSNPM is `15610ca` with live version 1.0.401 and
+WakeWordRNNPM is `efb04e9` with live version 1.1.160. The RN example resolves
+react-native-davoice 1.0.103 and react-native-wakeword 1.1.156. Its October 4
+App.tsx work adds Local AI Chat through the separate TTSLLM package.
+
+RN speech's newly committed declarations and bounded transition behavior were
+already in Flutter 0.0.6. RN wakeword added app-wide `AEC.mode`; added Flutter
+`AECMode`/`AECConfig` serialization and coverage. Changed the example's legacy
+WakewordAEC during-TTS value from true to false to match live RN false/false.
+
+Live artifact SHA-256 values, identical between corresponding RN and Flutter
+wrappers: TTS AAR `70bdedbefb1a71c491a565f98d9a90d030c99a90ed4e642884317fce493a4c82`,
+TTS iOS device executable `ccac2a2e615a66d62e404741be15cf4aa1e2b363aec6287bb90d4e0033f832c0`,
+wake AAR `86a023a1650c063ef2a2ce92918aaf01414a9ecd94118ae829e99e0a0bc5daf5`,
+and wake iOS device executable `39339990666efb1aec8122cdd6dd8e5672f81de10f23fb7438d19273823c1048`.
+The TTS Flutter checksum sidecars described the old AAR; copied the matching RN
+sidecars and confirmed both Maven directories and both full XCFramework trees
+are identical.
+
+Both refreshed AAR manifests declare minSdk 23. ARM64 ELF Android ident values:
+TTS/TTS2 JNI 23; wake ARM Compute/Graph and ONNX 23; libc++ 21. Validation:
+wake analysis plus 5 tests, speech analysis plus 16 tests, example analysis plus
+8 tests, Android debug APK with local wrappers, and iOS simulator app with local
+wrappers all passed. Restored the public example to hosted 0.0.6/0.0.45 after
+the build. No physical-device runtime test was performed.
+
+Published the rechecked artifacts as `flutter_davoice 0.0.7` from commit
+`5ad9c07` and `flutter_wake_word 0.0.46` from commit `863068b`, with matching
+annotated tags. Both publish dry-runs had zero warnings and both pub.dev uploads
+succeeded. The public example now targets these hosted versions.
