@@ -203,7 +203,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   final _narration = StartupNarration();
   String? _loadedTtsModel;
   _VoiceChoice _voiceChoice = _VoiceChoice.rich;
-  _AppModeChoice _appModeChoice = _AppModeChoice.fullAiChat;
+  _AppModeChoice _appModeChoice = _AppModeChoice.combined;
   String _message = 'Preparing voice demo...';
   bool _setupFailed = false;
   String _licenseSource = 'No license selected yet.';
@@ -1765,7 +1765,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   Future<void> _pauseWakeWordDetection() async {
     final wakeword = _wakeword;
     if (wakeword == null) return;
-    if (!await wakeword.pauseDetection(stopMic: Platform.isAndroid)) {
+    if (!await wakeword.pauseDetection(stopMic: false)) {
       throw StateError('Could not pause wake-word detection.');
     }
   }

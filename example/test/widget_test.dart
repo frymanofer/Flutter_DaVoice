@@ -23,6 +23,7 @@ void main() {
         final calls = <String>[];
         final voices = <String>[];
         final models = <String>[];
+        final wakewordPauseStopMicValues = <bool>[];
         const speech = MethodChannel('flutter_davoice');
         const wakeword = MethodChannel('flutter_wake_word');
         const permissions = MethodChannel(
@@ -40,6 +41,11 @@ void main() {
         messenger.setMockMethodCallHandler(wakewordEvents, (_) async => null);
         messenger.setMockMethodCallHandler(wakeword, (call) async {
           calls.add('wakeword.${call.method}');
+          if (call.method == 'pauseDetection') {
+            wakewordPauseStopMicValues.add(
+              (call.arguments as Map)['stopMic'] as bool,
+            );
+          }
           if (call.method == 'getRecordingWav') return '';
           return call.method == 'setAudioRoutingConfig' ? null : true;
         });
@@ -140,6 +146,8 @@ void main() {
           hasLength(1),
         );
         expect(calls, contains('wakeword.unPauseDetection'));
+        expect(wakewordPauseStopMicValues, isNotEmpty);
+        expect(wakewordPauseStopMicValues, everyElement(isFalse));
         expect(
           find.text('Say the wake word "Hey Coach" to continue.'),
           findsOneWidget,
