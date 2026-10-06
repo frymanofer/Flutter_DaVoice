@@ -36,8 +36,8 @@ migration, not an API inside the speech or wakeword wrappers.
 
 ## Verified baseline
 
-- Flutter declares the public hosted releases `flutter_davoice: 0.0.7` and
-  `flutter_wake_word: 0.0.46`. The example has no local path overrides.
+- Flutter declares the public hosted releases `flutter_davoice: 0.0.8` and
+  `flutter_wake_word: 0.0.47`. The example has no local path overrides.
 - The committed and pushed RN example is `origin/main` at `9dc9dc6`, with
   `react-native-davoice: 1.0.102` and `react-native-wakeword: 1.1.154`.
   Its dirty working tree has newer dependency declarations and Local LLM work;
@@ -240,8 +240,27 @@ have been corrected. Both AAR manifests declare API 23; every required ARM64
 native object reports API 23 or lower. Local-wrapper Android debug and iOS
 simulator builds pass. See `MEMORY.md` for hashes and test counts.
 
-The rechecked artifacts and AEC API are published as `flutter_davoice 0.0.7`
-and `flutter_wake_word 0.0.46`; the public example resolves those hosted versions.
+The rechecked artifacts and AEC API are published as `flutter_davoice 0.0.8`
+and `flutter_wake_word 0.0.47`; the public example resolves those hosted versions.
+
+## Android Samsung runtime fixes (2026-10-06)
+
+On a connected Samsung SM-G781B, the public `flutter_wake_word 0.0.46` failed
+startup with `MissingPluginException` because its Android bridge returned
+`notImplemented` for `pauseDetection` and `unPauseDetection`. Version 0.0.47
+forwards both calls to the existing native detector, matching iOS and RN.
+
+The next exposed failure was TTS2 initialization: Android's ICU regex engine
+rejects Java's embedded `(?U)` Unicode-character-class flag. The Android TTS
+preprocessors now use explicit Unicode boundaries for English and a detected
+fallback for Portuguese. The TTS2 constructor also preserves and logs the
+original initialization cause. These changes ship in `flutter_davoice 0.0.8`.
+
+Native unit tests (80 tests, including 350 Portuguese cases), Android lint,
+release AAR build, Flutter analyses/tests, and the Samsung startup smoke passed.
+The device reached the three-line startup narration with no missing-plugin or
+TTS2 initialization exception. The example retains `android:largeHeap="true"`,
+matching RN for the memory-heavy TTS2 model load; it was not the regex fix.
 
 ## Committed RN example audit (2026-10-06)
 

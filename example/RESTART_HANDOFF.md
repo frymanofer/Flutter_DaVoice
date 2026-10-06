@@ -101,3 +101,14 @@ Full reasoning and the per-subsystem matrix are in
 Earlier alignment passes passed Flutter tests, analysis, Android debug builds and
 iOS simulator builds as recorded in `MEMORY.md`. This API-23 pass has built an
 API-23 ARM64 debug APK, but no API-23 physical-device runtime test has occurred.
+# 2026-10-06 Android release update
+
+- Published `flutter_wake_word 0.0.47` after implementing Android
+  `pauseDetection`/`unPauseDetection` (commit `4e544f1`).
+- Published `flutter_davoice 0.0.8` with the Android-compatible TTS2 regex AAR
+  and cause-preserving initialization diagnostics (commit `5466018`).
+- Samsung SM-G781B startup reaches the three-line narration without the prior
+  missing-plugin or TTS2 initialization failures.
+- The example now declares hosted versions 0.0.8/0.0.47 and has no local
+  `pubspec_overrides.yaml`. Hosted `flutter pub get`, analysis, all eight tests,
+  the Android debug APK build, and the physical Samsung startup smoke passed.

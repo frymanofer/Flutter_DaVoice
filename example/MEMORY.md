@@ -471,3 +471,23 @@ Published the rechecked artifacts as `flutter_davoice 0.0.7` from commit
 `5ad9c07` and `flutter_wake_word 0.0.46` from commit `863068b`, with matching
 annotated tags. Both publish dry-runs had zero warnings and both pub.dev uploads
 succeeded. The public example now targets these hosted versions.
+
+## 2026-10-06 — Android pause bridge and TTS2 regex startup fixes
+
+Reproduced the photographed `MissingPluginException` on the connected Samsung
+SM-G781B. Dart called wakeword `pauseDetection`, while Android in published
+0.0.46 explicitly returned `notImplemented`. Added Android forwarding for
+`pauseDetection(stopMic)` and `unPauseDetection()`, validated it on-device, and
+published/pushed `flutter_wake_word 0.0.47` (commit `4e544f1`).
+
+That exposed the next native failure. TTS2 model/session loading succeeded, but
+warm-up constructed `TTSPreprocessingEnglish`, whose `(?U)` regex flag is not
+accepted by Android's ICU-backed `Pattern`. Replaced English uses with explicit
+Unicode boundaries and made Portuguese use `(?U)` only on engines that accept
+it. Preserved the original TTS2 initialization exception for diagnostics.
+All 80 native tests, Android lint, and release AAR assembly passed. Rebuilt the
+AAR, regenerated MD5/SHA1 sidecars, then pushed and published
+`flutter_davoice 0.0.8` (commit `5466018`). The Samsung reached startup
+narration without either exception. Example dependencies are now 0.0.8/0.0.47
+with no path override. Added `android:largeHeap="true"` to match RN because the
+loaded TTS2 process is memory-heavy; testing proved it was not the regex fix.
