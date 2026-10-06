@@ -132,6 +132,19 @@ point. See `API_PARITY.md` for the first app-driven comparison.
 - [ ] Implement Local AI Chat only as a separate Flutter LLM package migration;
   it is not part of `flutter_davoice` or `flutter_wake_word`.
 
+## Committed RN snapshot recheck (2026-10-06)
+
+- [x] Fetch RN and compare against an isolated `origin/main` export at
+  `9dc9dc6`; exclude all working-tree changes and Local LLM files.
+- [x] Verify the selected models, sounds, logo and temporary license against the
+  committed RN snapshot without recording credentials in notes.
+- [x] Recheck voices/speeds, four modes, routing/AEC, wakeword/SV thresholds,
+  Gemini request policy, narration and UI labels.
+- [x] Match committed RN's initial Combined selection and `pauseDetection(false)`
+  behavior on both platforms.
+- [x] Confirm no package-wrapper or native-binary update is required for this
+  committed example snapshot.
+
 ## Current RN voice update
 
 - [x] Rich default and dedicated ex2 model; Hanna/Ariana legacy ex models.

@@ -6,7 +6,8 @@
 
 # App-driven API parity
 
-Updated 2026-10-05. Start with `ReactNative_DaVoice/example/App.tsx` and its
+Updated 2026-10-06. Start with the exported committed
+`ReactNative_DaVoice/origin/main` example, then its `App.tsx` and
 active `src/` modules, then follow missing contracts into package wrappers.
 This is a first-pass inventory, not a declaration of complete behavioral parity.
 
@@ -32,6 +33,7 @@ This is a first-pass inventory, not a declaration of complete behavioral parity.
 | SV create/reuse/skip | RN onboarding/verification modules | Existing Flutter flows; saved candidate vs active enrollment already separate; full comparison pending |
 | Type-to-TTS mode | RN appflow mode selection | Fixed Flutter's first-wakeword selection falling through into combined mode |
 | Startup narration and skip | RN bootstraps then narrates/presents choices; waits for native stop | Implemented bootstrap → intro → voice → SV → wakeword; loading-time skip and native-stop wait covered by tests |
+| Wakeword pause ownership | Active RN startup, enrollment and capture calls use `pauseDetection(false)` | Flutter now passes `stopMic=false` on both platforms, preserving the microphone while detection is paused |
 | Wakeword asset | RN bundled hey-coach `.dm` | Flutter bundles and selects the same `.dm`; UI reports “Hey Coach” |
 
 ## Validation boundaries

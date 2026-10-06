@@ -1,5 +1,37 @@
 # Flutter example memory
 
+## 2026-10-06 — committed RN example parity audit
+
+Fetched the React Native remote, confirmed local `HEAD` and `origin/main` both
+resolve to `9dc9dc6fdd6af524ec309da1ec3e183490a7f37f` with zero divergence, and
+exported that ref to a separate temporary directory. The RN checkout is dirty,
+including Local LLM work and dependency changes, so no behavior or manifest was
+read from those working files for this audit.
+
+The latest pushed commit only changes `WakewordAEC.duringTTS` from true to false.
+Flutter already matched the committed false/false AEC setting. The committed RN
+example declares `react-native-davoice 1.0.102` and
+`react-native-wakeword 1.1.154`, and still has four modes. Its active Gemini
+configuration is non-streaming `gemini-3.1-flash-lite-preview`, Google search,
+temperature 0.7, 512 output tokens, thinking budget 256, four-second request
+spacing, 30-second rate-limit cooldown, and a two-second speech silence timeout;
+Flutter matches those values and behavior.
+
+Compared both Git/LFS pointers and materialized bytes for Rich, Hanna, Ariana,
+shared TTS2, hey-coach and SV models. They match. Sound effects and logo pointers
+also match. Voice selection, speeds, wakeword thresholds, SV sample/decision
+settings, routing entries, narration, mode labels and descriptions match. The
+Flutter temporary license matches the single committed RN license value; only a
+boolean comparison was logged and the value was not copied into these notes.
+
+Found and fixed two example-state differences. Flutter initialized its selected
+mode as Full AI Chat even though the first prompt later reset it to Combined;
+committed RN initializes both state and ref as Combined. Flutter also passed
+`stopMic=true` on Android through its shared wakeword pause helper, while every
+active committed RN startup, enrollment and detection-capture pause passes
+false. Flutter now initializes Combined and passes false on both platforms.
+No wrapper or native code change was needed. Local LLM remains excluded.
+
 ## 2026-10-01 — API 23 native lint follow-up
 
 The full Android TTS build exposed 13 API-24 lint errors after lowering minSdk.
@@ -409,9 +441,10 @@ outside routine alignment; record concrete blockers if one is discovered.
 
 Fetched current remote refs without modifying the RN working trees. The RN app
 remote remains `9dc9dc6`; TTSNPM is `15610ca` with live version 1.0.401 and
-WakeWordRNNPM is `efb04e9` with live version 1.1.160. The RN example resolves
-react-native-davoice 1.0.103 and react-native-wakeword 1.1.156. Its October 4
-App.tsx work adds Local AI Chat through the separate TTSLLM package.
+WakeWordRNNPM is `efb04e9` with live version 1.1.160. The dirty RN example
+working tree declares react-native-davoice 1.0.103 and react-native-wakeword
+1.1.156. Its October 4 uncommitted App.tsx work adds Local AI Chat through the
+separate TTSLLM package.
 
 RN speech's newly committed declarations and bounded transition behavior were
 already in Flutter 0.0.6. RN wakeword added app-wide `AEC.mode`; added Flutter

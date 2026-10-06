@@ -1,6 +1,6 @@
 # Flutter example context
 
-Last verified: 2026-10-05. Read `MEMORY.md` for evidence/history and
+Last verified: 2026-10-06. Read `MEMORY.md` for evidence/history and
 `ALIGNMENT_PLAN.md` for remaining work. Update these files throughout alignment.
 For a fresh editor/session, start with `RESTART_HANDOFF.md`; it contains the
 latest API-23 conclusions and safe continuation order.
@@ -29,21 +29,24 @@ All paths below are relative to `/Volumes/T9/projects`:
 The requested RN `chatGPTMemory.txt` exists at
 `../../ReactNative_DaVoice/example/chatGPTMemory.txt` relative to this example.
 The remote-model example and unused `AppSimpleUI.tsx` are not the parity target.
-The canonical RN app now wires a fifth Local AI Chat mode through the separate
-`react-native-davoice-llm` / `TTSLLM` package. Treat that as its own Flutter
-package/app migration; it is not an API inside the speech or wakeword wrappers.
+The dirty RN working tree wires a fifth Local AI Chat mode through the separate
+`react-native-davoice-llm` / `TTSLLM` package. It is absent from the committed
+`origin/main` baseline and remains a separate future Flutter package/app
+migration, not an API inside the speech or wakeword wrappers.
 
 ## Verified baseline
 
 - Flutter declares the public hosted releases `flutter_davoice: 0.0.7` and
   `flutter_wake_word: 0.0.46`. The example has no local path overrides.
-- RN manifest and installed packages now use `react-native-davoice: 1.0.103`
-  and `react-native-wakeword: 1.1.156`. The live sibling wrapper manifests are
-  newer: TTSNPM 1.0.401 and WakeWordRNNPM 1.1.160.
-  Older context files contain obsolete versions and packaging claims.
-- Existing uncommitted Flutter changes already add Hanna, lite/heavy selection,
-  and full AI chat, combined STT+TTS, STT-only, and type-to-TTS modes. Default
-  voice is Rich. Preserve this work; do not restart from the July migration plan.
+- The committed and pushed RN example is `origin/main` at `9dc9dc6`, with
+  `react-native-davoice: 1.0.102` and `react-native-wakeword: 1.1.154`.
+  Its dirty working tree has newer dependency declarations and Local LLM work;
+  those are outside the committed-example parity baseline. The sibling wrapper
+  repositories may be newer and must be audited separately when wrapper parity
+  is requested.
+- Flutter includes Hanna plus full AI chat, combined STT+TTS, STT-only, and
+  type-to-TTS modes. Default voice is Rich. Preserve this work; do not restart
+  from the July migration plan.
 - Current RN `useTTS2Only=false` is matched by `_usesSharedTtsModel=false`.
   Rich is the default: `model_ex2_rich.dm`, speed 0.95, `changeVoice('Rich')`.
   Hanna: `model_ex_hanna_light_davoice_ph.dm`, speed 0.90, no changeVoice call.
@@ -75,8 +78,9 @@ finishes before wakeword resumes and app callbacks are armed.
 
 `lib/flow/startup_narration.dart` coordinates persistent Skip Narration intent.
 Skipping while loading never sends native stop; skipping a spoken line waits for
-native stop even if Dart's speak waiter completes first. Pauses use stopMic=true
-on Android and false on iOS, matching current RN startup/capture. Startup retries
+native stop even if Dart's speak waiter completes first. Wakeword pauses use
+`stopMic=false` on both platforms, matching every active pause call in committed
+RN startup, enrollment, and detection capture. Startup retries
 cancel the previous event subscription and destroy the previous detector before
 recreating it. Pause/resume failures surface instead of silently reporting ready.
 Voice buttons are disabled during pending selection. Unit/widget tests cover
@@ -218,7 +222,7 @@ Do not reproduce the license value in context files, logs, or responses.
 ## Latest RN recheck (2026-10-05)
 
 Fetched all remote refs without changing the dirty RN working trees. RN example
-`main` remains at `9dc9dc6`; its live app added a fifth Local AI Chat mode through
+`main` remains at `9dc9dc6`; its dirty live checkout added a fifth Local AI Chat mode through
 the separate `react-native-davoice-llm` / `TTSLLM` package. The existing four
 Flutter modes still match their RN counterparts. Local AI remains a distinct
 future Flutter package and app migration.
@@ -238,3 +242,24 @@ simulator builds pass. See `MEMORY.md` for hashes and test counts.
 
 The rechecked artifacts and AEC API are published as `flutter_davoice 0.0.7`
 and `flutter_wake_word 0.0.46`; the public example resolves those hosted versions.
+
+## Committed RN example audit (2026-10-06)
+
+Fetched the RN remote and exported `origin/main` at `9dc9dc6` to a separate
+temporary tree. RN `HEAD` and `origin/main` are identical with zero divergence.
+The comparison did not read app behavior from the dirty RN working tree, so its
+uncommitted Local LLM mode and dependency changes were excluded.
+
+The pushed RN app still exposes the same four modes. Flutter matches its active
+voice/model/speed matrix, all selected model bytes, wakeword and SV model bytes,
+wakeword thresholds, speaker thresholds and sample count, audio routing and AEC
+false/false policy, Gemini model/request policy, two-second transcript timeout,
+startup narration, and mode labels/descriptions. The bundled temporary license
+also matches a committed RN app license without recording its value here.
+
+The audit found two older Flutter differences and corrected them: selected mode
+state now starts as Combined, and all wakeword pauses pass `stopMic=false`, as
+the committed RN app does on both platforms. This was an example-only change;
+the current public Flutter wrapper APIs and native artifacts already cover the
+committed RN calls. Local LLM remains intentionally excluded until it is
+committed and requested as a separate package migration.

@@ -1,15 +1,26 @@
 # Restart handoff
 
-Updated: 2026-10-05. This is the shortest authoritative starting point after an
+Updated: 2026-10-06. This is the shortest authoritative starting point after an
 editor/session restart. Read the linked detailed files before changing behavior.
+
+2026-10-06 committed-only RN audit: fetched the RN remote and compared Flutter
+against an exported `origin/main` snapshot at `9dc9dc6`, which is identical to
+the RN checkout's `HEAD`. All dirty RN working-tree files, including Local LLM,
+were excluded. The pushed app still has four modes and package declarations
+`react-native-davoice 1.0.102` / `react-native-wakeword 1.1.154`. Flutter's
+models, assets, voices/speeds, routing/AEC, Gemini policy, SV settings, narration,
+and four mode flows match. Corrected two older state/lifecycle differences:
+Flutter now initializes the selected mode as Combined and every wakeword pause
+uses `stopMic=false`, matching each active RN pause call. No Flutter wrapper or
+native binary change was required.
 
 2026-10-05 RN recheck: Flutter now includes the RN wrapper's typed app-wide
 `AEC.mode` contract and the example matches RN's active legacy AEC false/false
 policy. The live Flutter native artifacts exactly match the current RN wrapper
 artifacts; stale TTS AAR checksum sidecars were corrected. Both AAR manifests
 and required ARM64 objects remain API 23-compatible. Wrapper tests, example
-tests, Android debug build, and iOS simulator build pass. RN's fifth Local AI
-Chat mode still belongs to the separate TTSLLM package migration.
+tests, Android debug build, and iOS simulator build pass. The dirty RN working
+tree's fifth Local AI Chat mode still belongs to a separate TTSLLM migration.
 
 2026-10-01 follow-up: the full TTS build found API-24 collection/Optional calls.
 They were replaced with API-23-safe equivalents without desugaring or lint
@@ -79,11 +90,9 @@ Full reasoning and the per-subsystem matrix are in
 - The working RN App.tsx license was restored to the Flutter example. Never copy
   its value into context, logs or responses.
 - UI, startup narration, wakeword text, model choices, bridges and wrapper parity
-  contain substantial uncommitted work described in `CHATGPT_CONTEXT.md` and
-  `MEMORY.md`.
-- The root Flutter app, both Flutter wrapper repos, and native Android TTS repo
-  have dirty worktrees. Treat all existing changes as user/session work. Do not
-  reset, clean, mass-copy binaries, or overwrite them based only on filenames.
+  are described in `CHATGPT_CONTEXT.md` and `MEMORY.md`.
+- Recheck each repository's live status before editing. Do not reset, clean,
+  mass-copy binaries, or overwrite files based only on filenames.
 - The API-23 pass changes runtime routing, manifests, native sources and local
   package AARs. It has not published any package.
 
