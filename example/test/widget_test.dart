@@ -97,7 +97,11 @@ void main() {
         expect(find.text('Rich'), findsOneWidget);
         expect(find.text('Ariana'), findsOneWidget);
         expect(calls, isNot(contains('speech.speak')));
-        expect(calls, isNot(contains('wakeword.unPauseDetection')));
+        expect(calls, contains('wakeword.unPauseDetection'));
+        expect(
+          calls.indexOf('speech.pauseSpeechRecognition'),
+          lessThan(calls.indexOf('wakeword.unPauseDetection')),
+        );
         expect(
           calls.indexOf('speech.setAudioRoutingConfig'),
           lessThan(calls.indexOf('speech.initAll')),

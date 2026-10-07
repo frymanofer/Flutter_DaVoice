@@ -469,7 +469,6 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
 
   Future<void> _speakStartupNarration(List<String> lines) async {
     _wakeWordArmed = false;
-    await _pauseWakeWordDetection();
     await _speech.pauseSpeechRecognition();
     await _applySelectedTtsVoice();
     if (!mounted) return;
@@ -857,6 +856,10 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
 
     if (!mounted) return;
     _log('Starting wake-word detection enrollmentJsonPath=$enrollmentJsonPath');
+    // Match the React Native startWakewordDetection lifecycle exactly. Its
+    // helper always stops the instance before starting it, including the first
+    // start after creation.
+    await wakeword.stopKeywordDetection(_wakewordInstanceId);
     final wakewordStarted = await wakeword.startKeywordDetection(
       _wakewordInstanceId,
       _wakewordThreshold,
@@ -874,6 +877,12 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     await Future<void>.delayed(const Duration(milliseconds: 100));
 
     await _initializeSpeech(enrollmentJsonPath);
+    if (!mounted) return;
+    // React Native resumes this same detector immediately after Speech.initAll
+    // and Speech.pauseSpeechRecognition. It remains active through the rest of
+    // onboarding and narration; the Dart callback gate controls navigation.
+    await _unPauseWakeWordDetection();
+    _log('Wake-word detection resumed after Speech.initAll');
   }
 
   Future<void> _initializeSpeech(String? enrollmentJsonPath) async {
@@ -917,6 +926,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           );
         }
         await _pauseWakeWordDetection();
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        await _unPauseWakeWordDetection();
       }
       if (!mounted) return;
       await _speakStartupNarration([
@@ -925,8 +936,6 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
             : 'Speaker verification is ready!',
         'Now please say the wake word Hey Coach to continue.',
       ]);
-      if (!mounted) return;
-      await _unPauseWakeWordDetection();
       if (!mounted) return;
       setState(() {
         _wakeWordArmed = true;
