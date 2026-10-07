@@ -282,3 +282,28 @@ the committed RN app does on both platforms. This was an example-only change;
 the current public Flutter wrapper APIs and native artifacts already cover the
 committed RN calls. Local LLM remains intentionally excluded until it is
 committed and requested as a separate package migration.
+
+## Android wake-word inference regression and hotfix (2026-10-07)
+
+Physical comparison on the connected Samsung SM-G781B proved that the API-23
+wake native rebuild used by Flutter 0.0.46/0.0.47 was not behaviorally
+equivalent to the working React Native runtime. It initialized and opened the
+microphone but emitted no wake-word inference. The working installed RN APK
+contained the older ONNX/ACL binaries from
+`WakeWordRNNPM/android/src/main/libs/MyLibrary-release.aar`; all four relevant
+native hashes differed from Flutter's rebuilt Maven AAR. RN enabled XNNPACK and
+detected the same acoustic test, while the rebuilt Flutter runtime reported
+XNNPACK unsupported and did not score the phrase.
+
+Flutter example lifecycle drift was fixed at the same time. It now matches RN:
+stop/start wake detection, pause wake detection, initialize and pause speech,
+then resume the same wake detector immediately. Narration no longer pauses or
+restarts wake detection; the Dart callback gate prevents premature navigation.
+The user confirmed a spoken “Hey Coach” triggers the repaired build.
+
+Published `flutter_wake_word 0.0.48` restores the proven RN Android runtime and
+retains the 0.0.47 pause/resume bridge. This deliberately restores API 29+
+behavior. The wakeword API-23 native claim is withdrawn until a separate
+runtime or a behaviorally equivalent API-23 build passes physical inference
+tests. The example still declares minSdk 23 because speech/TTS fallback remains
+valid, but wakeword support below the restored native runtime floor is open.

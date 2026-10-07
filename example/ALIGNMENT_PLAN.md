@@ -152,7 +152,7 @@ point. See `API_PARITY.md` for the first app-driven comparison.
 - [x] Verify all three model assets against RN; update app and smoke tests.
 - [ ] Confirm audible output for the new model combination on device.
 
-## Android API 23 compatibility track (implemented 2026-09-30)
+## Android API 23 compatibility track (partially implemented)
 
 - [x] Separate compileSdk, targetSdk, manifest minSdk, feature gates and native
   binary build floors.
@@ -162,13 +162,15 @@ point. See `API_PARITY.md` for the first app-driven comparison.
   API 33 regardless of `useCustomAlways`.
 - [x] Define the compatibility contract: custom PCM/AEC and inline STT SpeakerID
   remain API 33+ unless STT is redesigned around a PCM-capable ASR engine.
-- [x] Produce API-23 TTS/TTS2 JNI, ONNX Runtime and ARM Compute dependencies
-  while retaining the existing ARM64 ACL acceleration architecture.
-- [x] Keep API 23 SpeakerID in the main wakeword AAR on the rebuilt inference
-  stack; older standalone experimental SpeakerID repositories are not released.
+- [ ] Produce an API-23 wakeword ONNX/ARM Compute runtime that passes physical
+  inference without changing the proven API 29+ runtime. The first rebuild
+  initialized but failed inference and was removed in 0.0.48.
+- [ ] Restore and physically validate API-23 standalone wakeword SpeakerID after
+  the corrected inference runtime exists.
 - [x] Define the supported full-product ABI as `arm64-v8a`; required TTS
   dependencies do not currently exist for `armeabi-v7a` or `x86_64`.
 - [x] Audit packaged AARs and lower wrapper/example minSdk declarations.
 - [x] Build the API-23 ARM64 example APK and run host/unit validation.
 - [ ] Test the supported feature matrix on physical API 23/26/29/32/33/current
-  devices before publishing.
+  devices. Current-device wake detection passes with 0.0.48; lower versions
+  remain open.

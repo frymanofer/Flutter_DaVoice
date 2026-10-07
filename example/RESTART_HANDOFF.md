@@ -31,9 +31,10 @@ SHA-256 is
 ## Active objective
 
 Keep the Flutter example and its two sibling Flutter packages aligned with the
-current React Native example and wrappers. The active work implements Android
-API 23 support while preserving the API 33+ STT path and the existing accelerated
-wakeword architecture.
+current React Native example and wrappers. Wake detection on current Android is
+repaired and published in `flutter_wake_word 0.0.48`. The remaining Android
+compatibility work is to provide API-23 wake inference without replacing or
+regressing the proven API 29+ ONNX/ACL runtime.
 
 ## API 23 implementation
 
@@ -44,11 +45,10 @@ wakeword architecture.
   23; their containing AAR also declares API 23.
 - Wakeword/SpeakerID ARM Compute was rebuilt from the exact prior source commit
   and acceleration configuration for ARM64 API 23.
-- The first ONNX rebuild used upstream 1.24.1. The original binary revealed its
-  exact build commit, `1442fe00d9169e89ec4a52bd699952810244ba6b`, reporting
-  1.24.0. The final API-23 build now uses that exact commit, still directly
-  links ARM Compute/Graph, and preserves the prior engine version and ACL
-  architecture on API 29+.
+- The API-23 ONNX/ACL rebuild did not preserve runtime behavior: it initialized
+  on the Samsung test device but never produced wake inference. Version 0.0.48
+  restores the working RN native set for current devices. Do not reintroduce
+  the rebuilt Maven AAR without a physical phrase-detection test.
 - Basic STT uses ordinary recognizer-owned microphone input on API 23–32.
   `startSpeech()` now goes through the version-aware dispatcher, and the
   custom-audio boundary independently enforces the same policy.
@@ -76,12 +76,12 @@ Full reasoning and the per-subsystem matrix are in
 - Current Flutter `integration_test` declares API 24. The debug manifest
   overrides that test-only library so the app can build with API 23; production
   code does not depend on it.
-- Final ARM64 debug and split release APK builds pass. The release APK declares
-  minSdk 23, compile/target SDK 36, contains only ARM64 native libraries, and
-  preserves ONNX 1.24.0 plus ACL linkage. All relevant native files have API-23
-  or lower notes and 16 KB load alignment.
-- Physical API 23/API 33 device behavior remains untested. Do not publish
-  packages without an explicit publishing request.
+- The current-device Samsung test passes wake detection with the restored RN
+  runtime. Physical API-23 wake behavior is unsupported until a corrected
+  fallback/runtime is built and tested. Speech/TTS API-23 work remains intact.
+- Publishing was explicitly requested. `flutter_wake_word 0.0.48` is published
+  and pushed; the example should resolve the hosted 0.0.48 release with no path
+  override once pub.dev propagation completes.
 
 ## Existing alignment state to preserve
 

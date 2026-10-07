@@ -491,3 +491,31 @@ AAR, regenerated MD5/SHA1 sidecars, then pushed and published
 narration without either exception. Example dependencies are now 0.0.8/0.0.47
 with no path override. Added `android:largeHeap="true"` to match RN because the
 loaded TTS2 process is memory-heavy; testing proved it was not the regex fix.
+
+## 2026-10-07 — wake-word device root cause and repair
+
+The Samsung reached the final wake screen with Flutter 0.0.47 but did not
+detect speech. The native detector and license initialized, the model bytes
+matched RN, and Android showed an active unsilenced wake AudioRecord. Stopping
+the paused STT recorder did not repair detection and was reverted.
+
+The app lifecycle was then matched to committed RN exactly: the start helper
+stops before starting; wake is paused before `Speech.initAll`; speech is paused;
+the same wake instance is resumed immediately afterward and remains active
+through narration. Widget coverage now verifies speech pause precedes wake
+resume. This removed Flutter's extra narration pauses and final stop/restart.
+
+A controlled acoustic comparison found the decisive binary difference. The
+installed RN APK detected the same phrase with three scores above 0.999. Its
+ONNX Runtime, JNI, ARM Compute and Graph hashes match
+`WakeWordRNNPM/android/src/main/libs/MyLibrary-release.aar`, not the newer
+Maven AAR copied into Flutter during the API-23 work. Flutter's rebuild logged
+that XNNPACK was unsupported and produced no prediction logs. Replacing the
+Flutter AAR with the proven RN AAR restored detection; the user spoke “Hey
+Coach” and confirmed it worked.
+
+Released and pushed `flutter_wake_word 0.0.48` from commit `44f738a`, tag
+`v0.0.48`. Analysis, five wrapper tests, publish dry-run and pub.dev upload
+passed. This hotfix restores current-device behavior and invalidates the prior
+claim that the API-23 ONNX rebuild preserved API 29+ behavior. A separate or
+corrected API-23 wake runtime still needs physical inference validation.
