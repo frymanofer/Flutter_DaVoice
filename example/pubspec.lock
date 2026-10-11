@@ -105,11 +105,10 @@ packages:
   flutter_davoice:
     dependency: "direct main"
     description:
-      name: flutter_davoice
-      sha256: "9ea0436e92ca4184a5a88182bbbc06f8c262d0584ee58ff03b444442d00610d4"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.0.10"
+      path: "../../FlutterPubDavoicePrivate"
+      relative: true
+    source: path
+    version: "0.0.11"
   flutter_driver:
     dependency: transitive
     description: flutter
@@ -131,11 +130,10 @@ packages:
   flutter_wake_word:
     dependency: "direct main"
     description:
-      name: flutter_wake_word
-      sha256: ab4f1bcb5cba05627fb0e377379b2ae30a01988f18e228ee3b796702f89738b4
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.0.51"
+      path: "../../flutter_wake_word_lib"
+      relative: true
+    source: path
+    version: "0.0.52"
   flutter_web_plugins:
     dependency: transitive
     description: flutter
