@@ -8,6 +8,11 @@ This `example/` directory contains the runnable Flutter app.
 
 ## Android compatibility
 
+This example uses Flutter 3.47 or newer, AGP 9.0.1, Gradle 9.1.0, and
+AGP built-in Kotlin. The two Flutter packages also support AGP 8 projects on
+Flutter 3.44 or newer. Earlier Flutter versions can continue using the
+previously published package releases.
+
 The example has `minSdk = 23` and keeps its current `compileSdk`. The
 supported API 23 device ABI is `arm64-v8a`.
 
