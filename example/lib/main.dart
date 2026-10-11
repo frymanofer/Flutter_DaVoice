@@ -682,7 +682,9 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         final enrollmentJsonPath = completedEnrollmentPath;
         if (enrollmentJsonPath != enrollmentFile.path ||
             !await enrollmentFile.exists()) {
-          throw StateError('Speaker profile was not saved at the requested path.');
+          throw StateError(
+            'Speaker profile was not saved at the requested path.',
+          );
         }
 
         setState(() {
@@ -846,6 +848,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       if (!mounted) return;
       final phrase = event['phrase']?.toString();
       final model = event['model']?.toString();
+      _log('Wake-word event received phrase=${phrase ?? model ?? 'unknown'}');
       unawaited(_handleWakeWord(phrase ?? model ?? _lastWakeWord));
     });
 
@@ -973,7 +976,12 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   }
 
   Future<void> _handleWakeWord(String rawWakeWord) async {
-    if (_isBusy || _isHandlingWakeWord || !_wakeWordArmed) return;
+    if (_isBusy || _isHandlingWakeWord || !_wakeWordArmed) {
+      _log(
+        'Wake-word event ignored: busy=$_isBusy handling=$_isHandlingWakeWord armed=$_wakeWordArmed',
+      );
+      return;
+    }
     _wakeWordArmed = false;
     _isHandlingWakeWord = true;
     final isFirstCall = _isFirstWakeWordCallback;
