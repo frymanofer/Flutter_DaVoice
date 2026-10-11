@@ -19,8 +19,8 @@ dependencies:
   flutter:
     sdk: flutter
 
-  flutter_davoice: 0.0.11
-  flutter_wake_word: 0.0.52
+  flutter_davoice: ^0.0.11   # publish with these fixes
+  flutter_wake_word: ^0.0.53  # publish with the issue-5 (filesDir) fix
 
   path_provider: ^2.1.5
   permission_handler: ^12.0.1

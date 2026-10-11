@@ -291,8 +291,8 @@ Reference docs used while shaping this example README:
 
 Published packages used by this app:
 
-- `flutter_davoice: ^0.0.10`
-- `flutter_wake_word: ^0.0.51`
+- `flutter_davoice: ^0.0.11`
+- `flutter_wake_word: ^0.0.52`
 
 ## Notes
 
