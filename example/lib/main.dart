@@ -566,9 +566,16 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
 
       final controller = await createSpeakerVerificationMicController('svMic1');
       _svController = controller;
+      final doneCompleter = Completer<String>();
 
       final errorSub = onSpeakerVerificationError((event) {
         if (event['controllerId'] != 'svMic1' || !mounted) return;
+
+        if (!doneCompleter.isCompleted) {
+          doneCompleter.completeError(
+            StateError('${event['error'] ?? 'Speaker verification failed.'}'),
+          );
+        }
 
         setState(() {
           _message = 'Speaker verification error: ${event['error'] ?? event}';
@@ -583,7 +590,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           _message = 'Collected $_svCollected/$_svTarget voice samples.';
         });
       });
-      final doneCompleter = Completer<String>();
+      String? completedEnrollmentPath;
       // Native completion can fail before the sample loop reaches its final await.
       unawaited(
         doneCompleter.future.then<void>(
@@ -597,6 +604,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         final json =
             event['enrollmentJson'] ?? event['enrollment'] ?? event['json'];
         if (json is String && json.length > 10) {
+          completedEnrollmentPath = event['enrollmentJsonPath']?.toString();
           if (!doneCompleter.isCompleted) doneCompleter.complete(json);
         } else if (!doneCompleter.isCompleted) {
           doneCompleter.completeError(
@@ -606,6 +614,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       });
 
       try {
+        final enrollmentFile = await _enrollmentJsonFile();
         _log('SV create controller model=$_speakerModel');
         await controller.create({
           'modelPath': _speakerModel,
@@ -622,6 +631,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           'davoice',
           _svOnboardingSampleCount,
           reset: true,
+          savePath: enrollmentFile.path,
         );
         _log('SV beginOnboarding target=$_svOnboardingSampleCount');
 
@@ -669,9 +679,11 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         await controller.setEnrollmentJson(enrollmentJson);
         await controller.destroy();
         _svController = null;
-        final enrollmentJsonPath = await _writeEnrollmentJsonToFile(
-          enrollmentJson,
-        );
+        final enrollmentJsonPath = completedEnrollmentPath;
+        if (enrollmentJsonPath != enrollmentFile.path ||
+            !await enrollmentFile.exists()) {
+          throw StateError('Speaker profile was not saved at the requested path.');
+        }
 
         setState(() {
           _savedEnrollmentJson = enrollmentJson;
@@ -1762,13 +1774,6 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
 
   void _log(String message) {
     debugPrint('[DavoiceExample] $message');
-  }
-
-  Future<String> _writeEnrollmentJsonToFile(String enrollmentJson) async {
-    final file = await _enrollmentJsonFile();
-    await file.writeAsString(enrollmentJson, flush: true);
-    _log('wrote enrollment json to ${file.path} len=${enrollmentJson.length}');
-    return file.path;
   }
 
   Future<void> _pauseWakeWordDetection() async {

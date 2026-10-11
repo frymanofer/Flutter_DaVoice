@@ -18,8 +18,8 @@ dependencies:
   flutter:
     sdk: flutter
 
-  flutter_davoice: 0.0.8
-  flutter_wake_word: 0.0.48
+  flutter_davoice: 0.0.9
+  flutter_wake_word: 0.0.49
 
   path_provider: ^2.1.5
   permission_handler: ^12.0.1
