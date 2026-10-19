@@ -45,7 +45,16 @@ String mergeTranscript(String previous, String current) {
 }
 
 /// Preserves existing sentence boundaries when normalizing model output for TTS.
-String normalizeTextForSpeech(String text) {
+String normalizeTextForSpeech(String input) {
+  // Markdown the TTS would read aloud: list markers, bold/italic, headings.
+  final text = input
+      .replaceAll(RegExp(r'^\s*(?:[-*•]|\d+[.)])\s+', multiLine: true), '')
+      .replaceAllMapped(RegExp(r'\*\*(.+?)\*\*|__(.+?)__'), (m) => m[1] ?? m[2] ?? '')
+      .replaceAllMapped(
+        RegExp(r'(^|\s)[*_](\S(?:[^*_\n]*\S)?)[*_](?=\s|[.,!?:;]|$)', multiLine: true),
+        (m) => '${m[1]}${m[2]}',
+      )
+      .replaceAll(RegExp(r'^#+\s*', multiLine: true), '');
   return text
       .replaceAllMapped(RegExp(r'\s*\n+\s*'), (match) {
         final before = text.substring(0, match.start).trimRight();

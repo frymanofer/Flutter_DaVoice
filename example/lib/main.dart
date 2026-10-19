@@ -2,12 +2,22 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'calories/calorie_store.dart';
+import 'calories/calorie_tools.dart';
+import 'calories/calories_card.dart';
+import 'calories/online_foods.dart';
 import 'flow/startup_narration.dart';
 import 'flow/transcript.dart';
+import 'local_llm/local_llm_service.dart';
+import 'local_llm/model_picker.dart';
+import 'local_llm/needs_web_search.dart';
+import 'local_llm/prompt.dart';
+import 'local_llm/web_search.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_davoice/flutter_davoice.dart';
+import 'package:flutter_davoice_llm/flutter_davoice_llm.dart';
 import 'package:flutter_wake_word/flutter_wake_word.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -17,14 +27,19 @@ void main() {
 }
 
 const _speakerId = 0;
+// RN example's useTTS2Only: when true, every voice (Ariana and Hanna too) uses
+// the shared multi-voice model.
 const _usesSharedTtsModel = false;
+const _sharedTtsModel = 'assets/models/model_ex2_rich_kate.dm';
 const _svOnboardingSampleCount = 5;
 const _androidSvUiMatchThreshold = 0.34;
 final _svDecisionThreshold = Platform.isAndroid ? 0.34 : 0.35;
 const _svMatchHold = Duration(milliseconds: 750);
-const _richSpeakerSpeed = 0.95;
-const _hannaSpeakerSpeed = 1.0;
-const _arianaSpeakerSpeed = 1.0;
+// Same speeds as the RN example's src/tts/index.ts.
+const _richSpeakerSpeed = 0.95; // RICH_SPEAKER_SPEED_NEW_MODEL
+const _sharedModelSpeakerSpeed = 1.0; // KATE / ARIANA / HANNA_SPEAKER_SPEED_NEW_MODEL
+const _arianaSpeakerSpeed = 0.88; // ARIANA_SPEAKER_SPEED (own model)
+const _hannaSpeakerSpeed = 0.9; // HANNA_SPEAKER_SPEED (own model)
 const _wakewordInstanceId = 'multi_model_instance';
 const _wakewordThreshold = 0.999;
 const _wakewordBufferCount = 3;
@@ -112,9 +127,26 @@ const _defaultAudioRoutingConfig = AudioRoutingConfig(
   wakeWordDuringTTS: WakeWordDuringTTSConfig(threshold: 0.9, bufferCount: 1),
 );
 
-enum _VoiceChoice { hanna, ariana, rich }
+/// The RN example's TTS_VOICE_OPTIONS, in the same order (the narration lists
+/// the other voices in this order). Rich, Kate, Jenny, Matthew and Gloria are
+/// voices inside the shared model; Ariana and Hanna have their own models.
+enum _VoiceChoice {
+  ariana('Ariana'),
+  rich('Rich'),
+  hanna('Hanna'),
+  kate('Kate'),
+  jenny('Jenny'),
+  matthew('Matthew'),
+  gloria('Gloria');
 
-enum _AppModeChoice { fullAiChat, combined, sttOnly, typeToTts }
+  const _VoiceChoice(this.label);
+
+  final String label;
+
+  bool get inSharedModel => _usesSharedTtsModel || (this != ariana && this != hanna);
+}
+
+enum _AppModeChoice { localAiChat, fullAiChat, combined, sttOnly, typeToTts }
 
 enum _Stage {
   preparing,
@@ -248,6 +280,32 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   DateTime? _lastGeminiRequestAt;
   DateTime? _geminiBlockedUntil;
   final List<Map<String, String>> _chatHistory = [];
+  // Local AI Chat: on-device model (flutter_davoice_llm), same license as the
+  // other DaVoice libraries.
+  // The calorie tracker the on-device AI changes by voice (demo of
+  // flutter_davoice_llm's tool calling). MCP server tools, if configured in
+  // local.config.ts, are added at warm-up.
+  final _calories = CalorieStore();
+  late final _localLlm = LocalLlmService(
+    licenseKey: () => _licenseController.text.trim(),
+  )..setTools(
+      calorieTools(_calories),
+      instructions: calorieToolInstructions,
+      toolChoice: calorieToolChoice,
+      missingToolCallReply: calorieMissingToolReply,
+    );
+  String? _mcpServerUrl;
+  String? _mcpServerToken;
+  // Set during a local AI turn: says a filler while a tool waits on something
+  // online (a food lookup, a remote MCP tool).
+  void Function(String filler)? _sayWhileWaitingOnline;
+  Future<void>? _mcpToolsLoaded;
+  String _localModelName = '';
+  String _localModelStatus = '';
+  int _localModelWarmUpSeq = 0;
+  bool _localGenerationActive = false;
+
+  bool get _isLocalAIChat => _appModeChoice == _AppModeChoice.localAiChat;
 
   @override
   void initState() {
@@ -296,10 +354,28 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   Future<void> _loadGeminiApiKey() async {
     try {
       final config = await rootBundle.loadString('local.config.ts');
-      final match = RegExp(
-        r'''GEMINI_API_KEY\s*=\s*['"]([^'"]+)['"]''',
-      ).firstMatch(config);
-      final key = match?.group(1)?.trim();
+      String? value(String name) => RegExp(
+        name + r'''\s*=\s*['"]([^'"]*)['"]''',
+      ).firstMatch(config)?.group(1)?.trim();
+      // Local AI Chat's web search engine (all optional): WEB_SEARCH_ENGINE =
+      // 'wikipedia' (default, no key) | 'tavily' | 'brave', plus the API keys.
+      WebSearch.configure(
+        engine: value('WEB_SEARCH_ENGINE') ?? 'wikipedia',
+        tavilyApiKey: value('TAVILY_API_KEY'),
+        braveApiKey: value('BRAVE_API_KEY'),
+      );
+      // Calorie demo: foods missing from the built-in table are looked up on
+      // Wikipedia, and first on USDA FoodData Central when USDA_API_KEY is set.
+      final usdaApiKey = value('USDA_API_KEY');
+      setFoodCalorieSources([
+        if (usdaApiKey != null && usdaApiKey.isNotEmpty) UsdaFoodSource(usdaApiKey),
+        WikipediaFoodSource(),
+      ]);
+      setOnlineFoodLookupListener((food) => _sayWhileWaitingOnline?.call(pickFoodLookupFiller(food)));
+      // Optional remote MCP server for Local AI Chat's tools.
+      _mcpServerUrl = value('MCP_SERVER_URL');
+      _mcpServerToken = value('MCP_SERVER_TOKEN');
+      final key = value('GEMINI_API_KEY');
       if (!mounted || key == null || key.isEmpty) return;
       setState(() => _geminiApiKey = key);
     } catch (error) {
@@ -340,6 +416,11 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
             _currentSpeechSentence = merged;
             _message = 'Listening...';
           });
+          // Process the user's words into the model while they still speak,
+          // so the reply only has to process the last few words.
+          if (_isLocalAIChat) {
+            unawaited(_localLlm.prefillForTurn(_localChatHistory(), merged));
+          }
           return;
         }
 
@@ -1008,7 +1089,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         } catch (_) {}
         await _speakStartupNarration([
           '$wakeWord detected.',
-          'Now you can test the voice capabilities in four different ways. You can select a full AI Chat, or simply test Speech to Text and Text to Speech individually or a combination of both.',
+          'Now you can test the voice capabilities in five different ways. You can select a Local AI Chat that runs fully on this device, a full AI Chat using remote Gemini, or simply test Speech to Text and Text to Speech individually or a combination of both.',
         ]);
         if (!mounted) return;
         setState(() {
@@ -1016,7 +1097,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           _pendingWakeWordForModeChoice = wakeWord;
           _stage = _Stage.modePicker;
           _message =
-              'Now you can choose from four options, a full AI Chat option, testing Speech to Text individually, testing Text to Speech individually, or a combination of both Speech to Text and Text to Speech.';
+              'Now you can choose from five options, a Local AI Chat on this device, a full AI Chat option, testing Speech to Text individually, testing Text to Speech individually, or a combination of both Speech to Text and Text to Speech.';
         });
         return;
       }
@@ -1055,7 +1136,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       });
       return;
     }
-    if (_appModeChoice == _AppModeChoice.fullAiChat) {
+    if (_appModeChoice == _AppModeChoice.fullAiChat || _isLocalAIChat) {
       await _enterFullAIChatMode();
       return;
     }
@@ -1187,15 +1268,283 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       _isIntroSpeaking = false;
       _isTtsSpeaking = false;
       _introScript = '';
-      _message = 'Speak with Gemini.';
+      _message = _isLocalAIChat ? 'Speak with the on-device AI.' : 'Speak with Gemini.';
       _partialTranscript = 'Listening...';
       _currentSpeechSentence = 'Listening...';
       _aiChatResponse = '';
       _lastTranscript = '';
       _geminiConversation.clear();
     });
+    // Load the model now, in the background, never in the middle of a turn.
+    if (_isLocalAIChat) _warmUpLocalModel();
     await _speech.pauseSpeechRecognition();
     await _resumeSpeechAfterTts();
+  }
+
+  /// The Local AI Chat conversation so far, oldest first.
+  List<ChatTurn> _localChatHistory() => [
+        for (final message in _chatHistory) ...[
+          // A reply's tool calls and results come before it, so later prompts
+          // show that actions are done by calling tools.
+          if (message['tools'] != null)
+            for (final tool in jsonDecode(message['tools']!) as List)
+              ChatTurn(fromUser: tool['role'] == 'user', text: tool['content'] as String),
+          if ((message['text'] ?? '').isNotEmpty)
+            ChatTurn(fromUser: message['role'] == 'user', text: message['text']!),
+        ],
+      ];
+
+  /// Connects the MCP server from local.config.ts once (before the first
+  /// warm-up: the tool list is part of the cached system prompt). A failure
+  /// only logs; the calorie tools keep working.
+  Future<void> _loadMcpTools() => _mcpToolsLoaded ??= () async {
+        final url = _mcpServerUrl;
+        if (url == null || url.isEmpty) return;
+        try {
+          final server = await connectMcpServer(
+            Uri.parse(url),
+            headers: {if ((_mcpServerToken ?? '').isNotEmpty) 'Authorization': 'Bearer $_mcpServerToken'},
+            timeout: const Duration(seconds: 8),
+          );
+          _log('MCP server connected (${server.client.protocolEra}): ${server.tools.map((t) => t.name).join(', ')}');
+          // MCP tools run on a remote server: say something while waiting.
+          final mcpTools = [
+            for (final tool in server.tools)
+              ToolDefinition(
+                name: tool.name,
+                description: tool.description,
+                inputSchema: tool.inputSchema,
+                requiresConfirmation: tool.requiresConfirmation,
+                handler: (args, context) {
+                  _sayWhileWaitingOnline?.call(pickOnlineToolFiller());
+                  return tool.handler(args, context);
+                },
+              ),
+          ];
+          _localLlm.setTools(
+            [...calorieTools(_calories), ...mcpTools],
+            instructions: '$calorieToolInstructions The other tools listed below come from a connected service; '
+                'use them when they help.',
+            toolChoice: calorieToolChoice,
+            missingToolCallReply: calorieMissingToolReply,
+          );
+        } catch (error) {
+          _log('MCP server unavailable: $error');
+        }
+      }();
+
+  /// Downloads (if needed) and loads the selected on-device model, then
+  /// prefills the system prompt. Runs when Local AI Chat opens and after a
+  /// model switch; only the latest call updates the status.
+  void _warmUpLocalModel() {
+    final seq = ++_localModelWarmUpSeq;
+    bool isLatest() => mounted && seq == _localModelWarmUpSeq;
+    setState(() => _localModelStatus = 'Loading...');
+    unawaited(_localLlm.store.selectedModel().then((model) {
+      if (isLatest()) setState(() => _localModelName = model.displayName);
+    }));
+    unawaited(_calories.load());
+    _loadMcpTools()
+        .then((_) => _localLlm.warmUp(
+          history: _localChatHistory(),
+          onDownloadProgress: (fraction) {
+            if (!isLatest()) return;
+            setState(() {
+              _localModelStatus = fraction >= 1
+                  ? 'Loading...'
+                  : 'Downloading ${(fraction * 100).round()}%';
+            });
+          },
+        ))
+        .then((model) async {
+          if (!isLatest()) return;
+          setState(() {
+            _localModelName = model.displayName;
+            _localModelStatus = 'Ready';
+          });
+          final deleted = await _localLlm.store.deleteUnusedModelFiles();
+          if (deleted.isNotEmpty) _log('Deleted unused model files: $deleted');
+        })
+        .catchError((Object error) {
+          _log('Local model warm-up failed: $error');
+          if (isLatest()) {
+            setState(() => _localModelStatus = 'Failed: ${_localErrorText(error)}');
+          }
+        });
+  }
+
+  static String _localErrorText(Object error) =>
+      error is LocalLlmException ? error.message : error.toString();
+
+  void _showLocalModelPicker() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => LocalLlmModelPicker(
+        store: _localLlm.store,
+        isBusy: _isAIChatLoading,
+        onSelected: (model) {
+          setState(() => _localModelName = model.displayName);
+          _warmUpLocalModel();
+        },
+      ),
+    );
+  }
+
+  /// One Local AI Chat turn: streams the on-device reply and speaks each
+  /// sentence as soon as it is complete. Errors are spoken as they are.
+  Future<void> _answerWithLocalModel(String userText) async {
+    final epoch = _speechUiEpoch;
+    _isAIChatLoading = true;
+    final history = _localChatHistory();
+    _chatHistory.add({'role': 'user', 'text': userText});
+    try {
+      await _pauseSpeechForTts();
+      if (!_isSpeechUiEpochCurrent(epoch)) return;
+
+      final model = await _localLlm.store.selectedModel();
+      if (!_localLlm.isModelReady(model.id)) {
+        // Still downloading or loading: say so now rather than hold the turn.
+        final status = _localModelStatus;
+        final progress = RegExp(r'^Downloading (\d+)%').firstMatch(status);
+        final String reply;
+        if (status.startsWith('Failed')) {
+          _warmUpLocalModel(); // retry the download/load
+          reply =
+              'The on-device model, ${model.displayName}, failed to load, so I am trying again. Please ask me again in a moment.';
+        } else if (progress != null) {
+          reply =
+              'The on-device model, ${model.displayName}, is still downloading. It is ${progress.group(1)} percent done. Please ask me again when it is ready.';
+        } else {
+          reply =
+              'The on-device model, ${model.displayName}, is still loading. Please ask me again in a moment.';
+        }
+        _chatHistory.add({'role': 'model', 'text': reply});
+        setState(() {
+          _aiChatResponse = reply;
+          _currentSpeechSentence = 'Local AI: $reply';
+          _message = 'Speaking Local AI reply...';
+        });
+        await _speakWhileSpeechPaused(reply, speakerId: _speakerId, speed: _speakerSpeed);
+        return;
+      }
+
+      setState(() {
+        _aiChatResponse = '';
+        _currentSpeechSentence = 'Local AI is thinking...';
+        _message = 'Generating local AI reply...';
+        _partialTranscript = '';
+      });
+      await _applySelectedTtsVoice();
+      if (!_isSpeechUiEpochCurrent(epoch)) return;
+
+      var reply = '';
+      var pendingSentence = '';
+      var spoken = Future<void>.value();
+      var toolMessages = const <ToolTurnMessage>[];
+      var shown = '';
+      late void Function(String) speakSentence;
+      // Food lookups and MCP tools say a filler through this while they wait online.
+      _sayWhileWaitingOnline = (filler) => speakSentence(filler);
+      speakSentence = (String sentence) {
+        final startsAfter = spoken;
+        spoken = _speech.speak(
+          _applyTtsTextPolicy(normalizeTextForSpeech(sentence)),
+          speakerId: _speakerId,
+          speed: _speakerSpeed,
+        );
+        // Show each sentence when its turn to be spoken comes, so the text
+        // never runs ahead of the voice.
+        unawaited(startsAfter.catchError((_) {}).then((_) {
+          if (!mounted || !_isSpeechUiEpochCurrent(epoch)) return;
+          shown = shown.isEmpty ? sentence : '$shown $sentence';
+          setState(() {
+            _aiChatResponse = shown;
+            _currentSpeechSentence = 'Local AI: $sentence';
+          });
+        }));
+      };
+
+      // Time-sensitive question ("who is the president..."): search the web
+      // while a short phrase is spoken, so the wait isn't silent, then answer
+      // from the results. The phrases aren't part of the reply or history.
+      WebSearchOutcome? webSearch;
+      if (needsWebSearch(userText)) {
+        final searching = _localLlm.searchWeb(userText);
+        final filler = pickSearchFiller(userText);
+        setState(() {
+          _currentSpeechSentence = 'Local AI: $filler';
+          _message = 'Searching the web...';
+        });
+        speakSentence(filler);
+        webSearch = await searching;
+        if (!_isSpeechUiEpochCurrent(epoch)) return;
+        if (webSearch.failed) speakSentence(pickSearchFailedFiller());
+        setState(() {
+          _message = webSearch!.failed
+              ? 'Could not search online; answering from memory...'
+              : 'Searched online (${webSearch.source}); generating reply...';
+        });
+      }
+
+      _localGenerationActive = true;
+      try {
+        toolMessages = await _localLlm.generateReplyStream(history, userText, (delta) {
+          if (!_isSpeechUiEpochCurrent(epoch)) return;
+          reply += delta;
+          final split = splitCompletedSentences(pendingSentence + delta);
+          pendingSentence = split.remainder;
+          split.completed.forEach(speakSentence);
+          setState(() => _message = 'Streaming local AI reply...');
+        }, webSearch: webSearch);
+      } finally {
+        _localGenerationActive = false;
+      }
+      if (!_isSpeechUiEpochCurrent(epoch)) return;
+      if (pendingSentence.trim().isNotEmpty) speakSentence(pendingSentence.trim());
+      reply = reply.trim();
+      _log('[AIChat][LOCAL_LLM] "$userText"${webSearch == null ? '' : ' (searched ${webSearch.source})'} -> $reply');
+      _chatHistory.add({
+        'role': 'model',
+        'text': reply,
+        if (toolMessages.isNotEmpty) 'tools': jsonEncode([for (final m in toolMessages) m.toJson()]),
+      });
+      setState(() {
+        _lastTranscript = '';
+        _message = 'Speaking Local AI reply...';
+      });
+      await spoken;
+      // Everything was spoken: show the reply with its original formatting.
+      if (_isSpeechUiEpochCurrent(epoch) && mounted) setState(() => _aiChatResponse = reply);
+    } catch (error) {
+      if (!_isSpeechUiEpochCurrent(epoch)) return;
+      final friendlyReply = 'Local AI chat error: ${_localErrorText(error)}';
+      _log(friendlyReply);
+      _chatHistory.add({'role': 'model', 'text': friendlyReply});
+      setState(() {
+        _aiChatResponse = friendlyReply;
+        _currentSpeechSentence = 'Local AI: $friendlyReply';
+        _message = 'Local AI is unavailable.';
+      });
+      try {
+        await _speakWhileSpeechPaused(friendlyReply, speakerId: _speakerId, speed: _speakerSpeed);
+      } catch (_) {
+        // Keep the error visible if speaking it also fails.
+      }
+    } finally {
+      if (_isSpeechUiEpochCurrent(epoch)) {
+        _sayWhileWaitingOnline = null;
+        setState(() {
+          _isAIChatLoading = false;
+          _isTtsSpeaking = false;
+          _lastTranscript = '';
+          _partialTranscript = '';
+        });
+        if (_isFullAIChatMode && _stage == _Stage.home) {
+          await _resumeSpeechAfterTts();
+        }
+      }
+    }
   }
 
   Future<void> _answerLikeVoiceAssistant(String transcript) async {
@@ -1206,6 +1555,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         _stage != _Stage.home) {
       return;
     }
+    if (_isLocalAIChat) return _answerWithLocalModel(cleaned);
     final now = DateTime.now();
     if (_geminiBlockedUntil != null && now.isBefore(_geminiBlockedUntil!)) {
       setState(
@@ -1453,6 +1803,9 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     _suppressSpeechResults = false;
     _activeGeminiClient?.close(force: true);
     _activeGeminiClient = null;
+    if (_localGenerationActive) {
+      unawaited(_localLlm.cancel().catchError((Object _) {}));
+    }
     return _speechUiEpoch;
   }
 
@@ -1811,13 +2164,9 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     } catch (_) {}
   }
 
+  /// The RN example's getTTSVoiceConfig(...).model.
   String get _selectedTtsModel {
-    if (_usesSharedTtsModel) {
-      return 'assets/models/model_ex2_rich_hanna_ariana.dm';
-    }
-    if (_voiceChoice == _VoiceChoice.rich) {
-      return 'assets/models/model_ex2_rich.dm';
-    }
+    if (_voiceChoice.inSharedModel) return _sharedTtsModel;
     return _voiceChoice == _VoiceChoice.hanna
         ? 'assets/models/model_ex_hanna_light_davoice_ph.dm'
         : 'assets/models/model_ex_ariana_fast_davoice_phoneme.dm';
@@ -1826,7 +2175,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   String? _appliedTtsVoice;
 
   Future<void> _applySelectedTtsVoice() async {
-    if (!_usesSharedTtsModel && _voiceChoice != _VoiceChoice.rich) return;
+    if (!_voiceChoice.inSharedModel) return;
     final voice = _voiceName;
     if (_appliedTtsVoice == voice) return;
     final result = await _speech.changeVoice(voice);
@@ -1839,43 +2188,25 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   String get _wakewordModel => 'assets/models/hey_coach_model_28_22012026b.dm';
   String get _speakerModel => 'assets/models/sv.dm';
 
-  String get _voiceName {
-    switch (_voiceChoice) {
-      case _VoiceChoice.hanna:
-        return 'Hanna';
-      case _VoiceChoice.ariana:
-        return 'Ariana';
-      case _VoiceChoice.rich:
-        return 'Rich';
-    }
-  }
+  String get _voiceName => _voiceChoice.label;
 
-  String get _otherVoiceNames {
-    return _VoiceChoice.values
-        .where((voice) => voice != _voiceChoice)
-        .map(_voiceNameForChoice)
-        .join(' or ');
-  }
+  String get _otherVoiceNames =>
+      _VoiceChoice.values.where((voice) => voice != _voiceChoice).map((voice) => voice.label).join(' or ');
 
-  String _voiceNameForChoice(_VoiceChoice voice) {
-    switch (voice) {
-      case _VoiceChoice.hanna:
-        return 'Hanna';
-      case _VoiceChoice.ariana:
-        return 'Ariana';
-      case _VoiceChoice.rich:
-        return 'Rich';
-    }
-  }
-
+  /// The RN example's getTTSVoiceConfig(...).speed.
   double get _speakerSpeed {
     switch (_voiceChoice) {
-      case _VoiceChoice.hanna:
-        return _usesSharedTtsModel ? _hannaSpeakerSpeed : 0.9;
-      case _VoiceChoice.ariana:
-        return _usesSharedTtsModel ? _arianaSpeakerSpeed : 0.88;
       case _VoiceChoice.rich:
         return _richSpeakerSpeed;
+      case _VoiceChoice.ariana:
+        return _usesSharedTtsModel ? _sharedModelSpeakerSpeed : _arianaSpeakerSpeed;
+      case _VoiceChoice.hanna:
+        return _usesSharedTtsModel ? _sharedModelSpeakerSpeed : _hannaSpeakerSpeed;
+      case _VoiceChoice.kate:
+      case _VoiceChoice.jenny:
+      case _VoiceChoice.matthew:
+      case _VoiceChoice.gloria:
+        return _sharedModelSpeakerSpeed;
     }
   }
 
@@ -2024,42 +2355,30 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
               const SizedBox(height: 10),
               const SizedBox(height: 10),
               const Text(
-                'Choose the voice for your demo.',
+                'Select a voice from model_ex2_rich_kate.dm before the demo starts.',
                 textAlign: TextAlign.center,
                 style: _Styles.body,
               ),
               const SizedBox(height: 18),
               _OptionLabel('Voice'),
-              _SegmentedButtons(
-                children: [
-                  _ChoiceButton(
-                    label: 'Hanna',
-                    selected: _voiceChoice == _VoiceChoice.hanna,
-                    onPressed: _isBusy
-                        ? null
-                        : () {
-                            setState(() => _voiceChoice = _VoiceChoice.hanna);
-                          },
-                  ),
-                  _ChoiceButton(
-                    label: 'Rich',
-                    selected: _voiceChoice == _VoiceChoice.rich,
-                    onPressed: _isBusy
-                        ? null
-                        : () {
-                            setState(() => _voiceChoice = _VoiceChoice.rich);
-                          },
-                  ),
-                  _ChoiceButton(
-                    label: 'Ariana',
-                    selected: _voiceChoice == _VoiceChoice.ariana,
-                    onPressed: _isBusy
-                        ? null
-                        : () {
-                            setState(() => _voiceChoice = _VoiceChoice.ariana);
-                          },
-                  ),
-                ],
+              // Two per row, like the RN example's voice grid.
+              LayoutBuilder(
+                builder: (context, constraints) => Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (final voice in _VoiceChoice.values)
+                      SizedBox(
+                        width: (constraints.maxWidth - 10) / 2,
+                        child: _ChoiceButton(
+                          label: voice.label,
+                          selected: _voiceChoice == voice,
+                          onPressed: _isBusy ? null : () => setState(() => _voiceChoice = voice),
+                        ),
+                      ),
+                  ],
+                ),
               ),
               const SizedBox(height: 18),
               _PrimaryButton(
@@ -2192,6 +2511,15 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
               const _PromptTitle('Choose Mode'),
               const SizedBox(height: 18),
               _ModeButton(
+                title: 'Local AI Chat',
+                description: 'STT → on-device LLM → TTS',
+                selected: _appModeChoice == _AppModeChoice.localAiChat,
+                onPressed: () {
+                  unawaited(_selectMode(_AppModeChoice.localAiChat));
+                },
+              ),
+              const SizedBox(height: 10),
+              _ModeButton(
                 title: 'Full AI Chat',
                 description: 'STT → Gemini → TTS',
                 selected: _appModeChoice == _AppModeChoice.fullAiChat,
@@ -2245,6 +2573,11 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           wakeWord: _lastWakeWord,
           speechMode: _speechEchoSessionActive ? _appModeChoice : null,
           isFullAIChatMode: _isFullAIChatMode,
+          isLocalAIChat: _isFullAIChatMode && _isLocalAIChat,
+          localModelName: _localModelName,
+          localModelStatus: _localModelStatus,
+          onChangeLocalModel: _showLocalModelPicker,
+          calorieStore: _calories,
           currentSpeechSentence: _currentSpeechSentence,
           introScript: _introScript,
           aiChatResponse: _aiChatResponse,
@@ -2315,6 +2648,11 @@ class _HomeScreen extends StatelessWidget {
     required this.wakeWord,
     required this.speechMode,
     required this.isFullAIChatMode,
+    this.isLocalAIChat = false,
+    this.localModelName = '',
+    this.localModelStatus = '',
+    this.onChangeLocalModel,
+    this.calorieStore,
     required this.currentSpeechSentence,
     required this.introScript,
     required this.aiChatResponse,
@@ -2328,6 +2666,11 @@ class _HomeScreen extends StatelessWidget {
   final String wakeWord;
   final _AppModeChoice? speechMode;
   final bool isFullAIChatMode;
+  final bool isLocalAIChat;
+  final String localModelName;
+  final String localModelStatus;
+  final VoidCallback? onChangeLocalModel;
+  final CalorieStore? calorieStore;
   final String currentSpeechSentence;
   final String introScript;
   final String aiChatResponse;
@@ -2338,7 +2681,9 @@ class _HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final active = isFullAIChatMode || speechMode != null;
-    final title = isFullAIChatMode
+    final title = isLocalAIChat
+        ? 'Local AI Chat'
+        : isFullAIChatMode
         ? 'Full AI Chat'
         : speechMode == _AppModeChoice.combined
         ? 'Combined STT + TTS'
@@ -2356,6 +2701,25 @@ class _HomeScreen extends StatelessWidget {
             Text(message, textAlign: TextAlign.center, style: _Styles.body),
           ] else ...[
             _InfoBlock(label: 'Speaker', value: voiceName),
+            if (isLocalAIChat)
+              Row(
+                children: [
+                  Expanded(
+                    child: _InfoBlock(
+                      label: 'Model',
+                      value: [
+                        localModelName.isEmpty ? '...' : localModelName,
+                        if (localModelStatus.isNotEmpty) localModelStatus,
+                      ].join(' · '),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: onChangeLocalModel,
+                    child: const Text('Change'),
+                  ),
+                ],
+              ),
+            if (isLocalAIChat && calorieStore != null) CaloriesCard(store: calorieStore!),
             _InfoBlock(label: 'Status', value: message),
             _InfoBlock(
               label: isFullAIChatMode ? 'Transcript' : 'Current sentence',
@@ -2366,7 +2730,10 @@ class _HomeScreen extends StatelessWidget {
                   : 'Listening...',
             ),
             if (isFullAIChatMode && aiChatResponse.isNotEmpty)
-              _InfoBlock(label: 'Gemini reply', value: aiChatResponse),
+              _InfoBlock(
+                label: isLocalAIChat ? 'Local AI reply' : 'Gemini reply',
+                value: aiChatResponse,
+              ),
             if (!isFullAIChatMode &&
                 lastTranscript.isNotEmpty &&
                 lastTranscript != partialTranscript &&
@@ -2495,24 +2862,6 @@ class _OptionLabel extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(text, style: _Styles.label),
-    );
-  }
-}
-
-class _SegmentedButtons extends StatelessWidget {
-  const _SegmentedButtons({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        for (var i = 0; i < children.length; i += 1) ...[
-          if (i > 0) const SizedBox(width: 10),
-          Expanded(child: children[i]),
-        ],
-      ],
     );
   }
 }

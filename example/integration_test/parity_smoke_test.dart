@@ -8,12 +8,13 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'Rich ex2 and Hanna/Ariana ex models work through real native bridges',
+    'Shared ex2 model voices and Hanna/Ariana ex models work through real native bridges',
     (tester) async {
       final speech = FlutterDavoice();
       final wakeword = createKeyWordFlutterPCInstance('parity_smoke');
       var wakewordCreated = false;
       var ttsInitialized = false;
+      String? loadedModel;
       addTearDown(() async {
         try {
           if (ttsInitialized) await speech.stopSpeaking();
@@ -54,8 +55,14 @@ void main() {
       } finally {
         await verification.destroy();
       }
+      // Same voices, models and speeds as the RN example (src/tts/index.ts).
+      const shared = 'model_ex2_rich_kate.dm';
       for (final voice in [
-        (name: 'Rich', model: 'model_ex2_rich.dm', speed: 0.95),
+        (name: 'Rich', model: shared, speed: 0.95),
+        (name: 'Kate', model: shared, speed: 1.0),
+        (name: 'Jenny', model: shared, speed: 1.0),
+        (name: 'Matthew', model: shared, speed: 1.0),
+        (name: 'Gloria', model: shared, speed: 1.0),
         (
           name: 'Hanna',
           model: 'model_ex_hanna_light_davoice_ph.dm',
@@ -67,14 +74,19 @@ void main() {
           speed: 0.88,
         ),
       ]) {
-        if (ttsInitialized) {
-          await speech.stopSpeaking();
-          await speech.destroyAll();
-          ttsInitialized = false;
+        final model = 'assets/models/${voice.model}';
+        if (loadedModel != model) {
+          if (ttsInitialized) {
+            await speech.stopSpeaking();
+            await speech.destroyAll();
+            ttsInitialized = false;
+          }
+          await speech.initTTS(model);
+          ttsInitialized = true;
+          loadedModel = model;
         }
-        await speech.initTTS('assets/models/${voice.model}');
-        ttsInitialized = true;
-        if (voice.name == 'Rich') expect(await speech.changeVoice('Rich'), 0);
+        // Voices in the shared model are switched by name.
+        if (voice.model == shared) expect(await speech.changeVoice(voice.name), 0, reason: voice.name);
         await speech.speak(
           'Hello. My name is ${voice.name}.',
           speed: voice.speed,

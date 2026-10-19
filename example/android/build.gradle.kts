@@ -8,6 +8,9 @@ allprojects {
         maven {
             url = uri(rootProject.project(":flutter_wake_word").projectDir.resolve("libs"))
         }
+        maven {
+            url = uri(rootProject.project(":flutter_davoice_llm").projectDir.resolve("libs"))
+        }
     }
 }
 

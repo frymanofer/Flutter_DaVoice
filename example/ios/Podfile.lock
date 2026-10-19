@@ -3,11 +3,11 @@ PODS:
   - flutter_davoice (0.0.1):
     - Flutter
     - onnxruntime-objc (~> 1.20.0)
+  - flutter_davoice_llm (0.0.1):
+    - Flutter
   - flutter_wake_word (1.0.1):
     - Flutter
     - onnxruntime-objc (~> 1.20.0)
-  - integration_test (0.0.1):
-    - Flutter
   - ios_microphone_permission (0.0.1):
     - Flutter
   - onnxruntime-c (1.20.0)
@@ -21,8 +21,8 @@ PODS:
 DEPENDENCIES:
   - Flutter (from `Flutter`)
   - flutter_davoice (from `.symlinks/plugins/flutter_davoice/ios`)
+  - flutter_davoice_llm (from `.symlinks/plugins/flutter_davoice_llm/ios`)
   - flutter_wake_word (from `.symlinks/plugins/flutter_wake_word/ios`)
-  - integration_test (from `.symlinks/plugins/integration_test/ios`)
   - ios_microphone_permission (from `.symlinks/plugins/ios_microphone_permission/ios`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
 
@@ -36,25 +36,25 @@ EXTERNAL SOURCES:
     :path: Flutter
   flutter_davoice:
     :path: ".symlinks/plugins/flutter_davoice/ios"
+  flutter_davoice_llm:
+    :path: ".symlinks/plugins/flutter_davoice_llm/ios"
   flutter_wake_word:
     :path: ".symlinks/plugins/flutter_wake_word/ios"
-  integration_test:
-    :path: ".symlinks/plugins/integration_test/ios"
   ios_microphone_permission:
     :path: ".symlinks/plugins/ios_microphone_permission/ios"
   permission_handler_apple:
     :path: ".symlinks/plugins/permission_handler_apple/ios"
 
 SPEC CHECKSUMS:
-  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  flutter_davoice: 78de5590da999720d161772586cf50148931b2bb
+  Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
+  flutter_davoice: 6ac6c209dbcb5346644249d38effc3a519f080f0
+  flutter_davoice_llm: fa15bf7434b033108e7a8d39632ddf83335b9b90
   flutter_wake_word: 42f07fbf0774a86fd8a821fd2915a68f0676c6af
-  integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
   ios_microphone_permission: 7d975ad9996d44c677d44c188dc69db9bf5badf3
   onnxruntime-c: 07cfff40dda7e1c54a4350bb2ad226c63150fce3
   onnxruntime-objc: b22c5d4517e9804e47c66f1f122ec4a6aa923f86
   permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
 
-PODFILE CHECKSUM: 6698267f678a7e8d42fcdcf3bf503cca197e9017
+PODFILE CHECKSUM: c6ea42b603d65bb7658e8580c41cd2708aa6e90b
 
 COCOAPODS: 1.16.2

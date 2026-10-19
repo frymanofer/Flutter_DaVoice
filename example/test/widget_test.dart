@@ -7,7 +7,10 @@ import 'package:flutter_davoice/flutter_davoice_platform_interface.dart';
 import 'package:flutter_davoice/flutter_davoice_method_channel.dart';
 
 void main() {
-  for (final selectedVoice in ['Rich', 'Hanna', 'Ariana']) {
+  const sharedModel = 'assets/models/model_ex2_rich_kate.dm';
+  for (final selectedVoice in ['Rich', 'Kate', 'Gloria', 'Hanna', 'Ariana']) {
+    // Rich, Kate, Jenny, Matthew and Gloria are voices in the shared model.
+    final inSharedModel = selectedVoice != 'Hanna' && selectedVoice != 'Ariana';
     testWidgets(
       'Rich startup and $selectedVoice selection load the correct model',
       (tester) async {
@@ -93,9 +96,9 @@ void main() {
         }
         expect(find.text('Choose Voice'), findsOneWidget);
         expect(find.text('Lite'), findsNothing);
-        expect(find.text('Hanna'), findsOneWidget);
-        expect(find.text('Rich'), findsOneWidget);
-        expect(find.text('Ariana'), findsOneWidget);
+        for (final voice in ['Ariana', 'Rich', 'Hanna', 'Kate', 'Jenny', 'Matthew', 'Gloria']) {
+          expect(find.text(voice), findsOneWidget);
+        }
         expect(calls, isNot(contains('speech.speak')));
         expect(calls, contains('wakeword.unPauseDetection'));
         expect(
@@ -111,7 +114,7 @@ void main() {
           lessThan(calls.indexOf('speech.changeVoice')),
         );
         expect(voices, ['Rich']);
-        expect(models, ['assets/models/model_ex2_rich.dm']);
+        expect(models, [sharedModel]);
         await tester.ensureVisible(find.text(selectedVoice));
         await tester.tap(find.text(selectedVoice));
         await tester.pump();
@@ -123,18 +126,14 @@ void main() {
           );
           await tester.pump(const Duration(milliseconds: 100));
         }
-        expect(voices, ['Rich']);
+        // A voice in the shared model is switched without reloading it.
+        expect(voices, inSharedModel && selectedVoice != 'Rich' ? ['Rich', selectedVoice] : ['Rich']);
         final selectedModel = switch (selectedVoice) {
           'Hanna' => 'assets/models/model_ex_hanna_light_davoice_ph.dm',
           'Ariana' => 'assets/models/model_ex_ariana_fast_davoice_phoneme.dm',
-          _ => 'assets/models/model_ex2_rich.dm',
+          _ => sharedModel,
         };
-        expect(
-          models,
-          selectedVoice == 'Rich'
-              ? [selectedModel]
-              : ['assets/models/model_ex2_rich.dm', selectedModel],
-        );
+        expect(models, inSharedModel ? [sharedModel] : [sharedModel, selectedModel]);
         expect(find.text('Skip'), findsOneWidget);
         await tester.ensureVisible(find.text('Skip'));
         await tester.tap(find.text('Skip'));
@@ -143,7 +142,7 @@ void main() {
         }
         expect(
           calls.where((call) => call == 'speech.initAll'),
-          hasLength(selectedVoice == 'Rich' ? 1 : 2),
+          hasLength(inSharedModel ? 1 : 2),
         );
         expect(
           calls.where((call) => call == 'wakeword.createInstanceMulti'),
