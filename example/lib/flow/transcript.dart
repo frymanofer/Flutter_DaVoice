@@ -69,3 +69,26 @@ String normalizeTextForSpeech(String input) {
       .replaceAll(RegExp(r'\s{2,}'), ' ')
       .trim();
 }
+
+/// Splits [text] into finished sentences and the unfinished remainder, so TTS
+/// can start on the first sentence while the model is still generating. Same
+/// rule as the RN example's splitCompletedSentences.
+({List<String> completed, String remainder}) splitCompletedSentences(String text) {
+  final completed = <String>[];
+  var start = 0;
+  for (var index = 0; index < text.length; index++) {
+    if (!'.!?'.contains(text[index])) continue;
+    var boundary = index + 1;
+    while (boundary < text.length && '"\')]'.contains(text[boundary])) {
+      boundary++;
+    }
+    while (boundary < text.length && text[boundary].trim().isEmpty) {
+      boundary++;
+    }
+    final sentence = text.substring(start, boundary).trim();
+    if (sentence.isNotEmpty) completed.add(sentence);
+    start = boundary;
+    index = boundary - 1;
+  }
+  return (completed: completed, remainder: text.substring(start));
+}

@@ -27,6 +27,25 @@ libraries. The complete app does not support `armeabi-v7a`, `x86`, or
 See [ANDROID_COMPATIBILITY.md](ANDROID_COMPATIBILITY.md) for the package and
 runtime contract.
 
+## Local AI Chat: customize it with the agent pack
+
+What the on-device AI says and does is configured in JSON files in `example/assets/agent/` (the React
+Native and Flutter examples ship the same files). flutter_davoice_llm's `DavoiceAgent` (the same
+native code on Android and iOS, and in react-native-davoice-llm) reads them;
+`lib/agent/local_agent.dart` creates it:
+
+| File | What it holds |
+|---|---|
+| `agent.json` | Persona (system prompt), prompt wording, when to search the web, which Wikipedia page answers "who holds this office", and the phrases said while waiting |
+| `skills/calories/skill.json` | The calorie tracker's tools (names, descriptions, arguments), which tool each kind of sentence uses, word lists and every message it says |
+| `skills/calories/foods.json` | The food list: calories per typical serving |
+
+Patterns are regular expressions, matched case-insensitively. Change a file and rebuild
+the app; no code changes are needed. To add a food, add it to `foods.json`. At runtime the
+app can also add, change or remove foods (`agent.skill('calories', 'foods.upsert', {'food': ...})`
+/ `'foods.remove'`); those changes, and foods found online, are kept on the device (in the
+agent's SQLite database) on top of the shipped list.
+
 ## Local AI Chat: the AI changes the app (tool calling and MCP)
 
 Local AI Chat shows a **Calories today** card that the on-device AI updates by voice, using
@@ -39,12 +58,18 @@ flutter_davoice_llm's tool calling. Try:
 
 Every change shows on the card with an **Undo** button. The model extracts the food and
 quantity and the app looks up the calories, so "two eggs" is always 156. Foods missing from
-the built-in table are looked up on Wikipedia (per 100 g; "I had 200 grams of lentils" uses
+the built-in list are looked up on Wikipedia (per 100 g; "I had 200 grams of lentils" uses
 the weight). For dishes and brands with real serving sizes, add a free
 [USDA FoodData Central](https://fdc.nal.usda.gov/api-key-signup) key; USDA is then tried
-first. If no source knows the food, the AI asks how many calories it had. Other sources
-plug in through `FoodCalorieSource` (online_foods.dart). The demo's code is
-in `lib/calories/` (`calorie_tools.dart` defines the tools, `calorie_store.dart` holds the data, `calories_card.dart` is the card): copy it as a template for your own app's tools.
+first. If no source knows the food, the AI asks how many calories it had. Another source
+can be added as `{'type': 'host', 'name': ...}` in the calories skill's `sources`; the app
+answers its `foodLookup` requests in `DavoiceAgent.create`'s `onRequest`.
+
+The tracker's tools run in the agent (their definitions, routing and messages are in
+`skills/calories/skill.json`), and the calorie log is kept in its SQLite database.
+`lib/calories/calories_card.dart` shows it (`calorie_log.dart` reads
+`agent.skill('calories', 'log.get')` and the agent's `skill` events). Your app's own tools,
+or a remote MCP server's, join with `agent.setTools(tools)`.
 
 Optional settings, in the git-ignored `local.config.ts` asset:
 
@@ -75,22 +100,24 @@ Wikipedia handles "who currently holds this office" questions well but has no ne
 prices or weather; Tavily and Brave are full web search. If the chosen engine fails or
 finds nothing, Wikipedia is tried.
 
-To use any other search API, implement `WebSearchEngine` from
-`lib/local_llm/web_search.dart`:
+To use any other search API, set `'engine': 'host'` in `webSearch` (see
+`lib/agent/local_agent.dart`) and answer the agent's `webSearch` requests in
+`DavoiceAgent.create`'s `onRequest`:
 
 ```dart
-class MySearchEngine implements WebSearchEngine {
-  @override
-  String get name => 'MySearch';
-
-  @override
-  Future<List<WebRagPassage>> search(String query, {required int maxResults}) async {
+final agent = await DavoiceAgent.create(
+  {'pack': pack, 'webSearch': {'engine': 'host'}},
+  onRequest: (request) async {
     // Call your API; return short plain-text passages, most relevant first.
-    return [WebRagPassage(text: '...', url: 'https://...')];
-  }
-}
-
-WebSearch.configure(customEngine: MySearchEngine()); // also: fallbackToWikipedia, maxResults, timeout
+    return {
+      'name': 'MySearch',
+      'passages': [
+        {'text': '...', 'url': 'https://...', 'title': '...'},
+      ],
+    };
+  },
+);
 ```
 
-Which questions trigger a search is decided in `lib/local_llm/needs_web_search.dart`.
+Which questions trigger a search is set in `assets/agent/agent.json` (`webSearch.rules`).
+

@@ -5,13 +5,15 @@
 //   flutter test integration_test/local_llm_smoke_test.dart -d <device>
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_davoice_example/agent/agent_pack.dart';
 import 'package:flutter_davoice_example/local_llm/local_llm_service.dart';
-import 'package:flutter_davoice_example/local_llm/prompt.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  // Local AI Chat's prompts, rules and tools (assets/agent/).
+  setUpAll(loadAgentPack);
 
   testWidgets(
     'local LLM downloads, loads, streams, reuses the cache and cancels',
@@ -31,7 +33,7 @@ void main() {
       debugPrint('[LocalLlmSmoke] ${model.displayName} ready after ${load.elapsedMilliseconds} ms');
       expect(service.isModelReady(model.id), isTrue);
 
-      Future<String> ask(List<ChatTurn> history, String question) async {
+      Future<String> ask(List<Map<String, Object?>> history, String question) async {
         final reply = StringBuffer();
         final timer = Stopwatch()..start();
         int? firstTokenMs;
@@ -49,8 +51,8 @@ void main() {
 
       // Second turn: the first turn is already in the cache.
       final history = [
-        const ChatTurn(fromUser: true, text: 'What is the capital of France? Answer in one short sentence.'),
-        ChatTurn(fromUser: false, text: first),
+        {'role': 'user', 'text': 'What is the capital of France? Answer in one short sentence.'},
+        {'role': 'model', 'text': first},
       ];
       await service.prefillForTurn(history, 'And of');
       final second = await ask(history, 'And of Japan?');

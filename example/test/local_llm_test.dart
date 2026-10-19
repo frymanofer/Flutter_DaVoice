@@ -1,16 +1,19 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_davoice_example/local_llm/chat_template.dart';
 import 'package:flutter_davoice_example/local_llm/local_llm_service.dart';
 import 'package:flutter_davoice_example/local_llm/model_config.dart';
 import 'package:flutter_davoice_example/local_llm/model_store.dart';
-import 'package:flutter_davoice_example/local_llm/prompt.dart';
+import 'package:flutter_davoice_example/flow/transcript.dart';
 import 'package:flutter_davoice_llm/flutter_davoice_llm.dart';
 import 'package:flutter_davoice_llm/flutter_davoice_llm_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
-class FakeLlm extends FlutterDavoiceLlmPlatform {
+/// The engine and the agent's native side.
+class FakeLlm extends FlutterDavoiceLlmPlatform with MockPlatformInterfaceMixin {
   final events = StreamController<LocalLlmTokenEvent>.broadcast(sync: true);
   int loads = 0;
   final prefills = <String>[];
@@ -46,64 +49,32 @@ class FakeLlm extends FlutterDavoiceLlmPlatform {
   Future<void> unloadModel() async {}
   @override
   Future<bool> isModelLoaded() async => loads > 0;
+
+  // The agent: records calls; a turn streams `script` as text events.
+  final agentEvents$ = StreamController<String>.broadcast();
+  final agentCalls = <String>[];
+  @override
+  Stream<String> get agentEvents => agentEvents$.stream;
+  @override
+  Future<void> agentCreate(String configJson) async {}
+  @override
+  Future<String> agentCall(int callId, String method, String argsJson) async {
+    agentCalls.add('$method $argsJson');
+    if (method == 'turn') {
+      for (final token in script) {
+        agentEvents$.add(jsonEncode({'type': 'text', 'text': token}));
+      }
+    }
+    scheduleMicrotask(() => agentEvents$.add(jsonEncode({'type': 'end', 'callId': callId})));
+    return method == 'turn' ? jsonEncode({'text': script.join(), 'toolMessages': [], 'cancelled': false}) : 'null';
+  }
+
+  @override
+  Future<void> agentClose() async {}
 }
 
 void main() {
   final chatml = presetById('chatml').template;
-  final gemma = presetById('gemma').template;
-  const history = [
-    ChatTurn(fromUser: true, text: 'Hi'),
-    ChatTurn(fromUser: false, text: 'Hello!'),
-  ];
-
-  group('assemblePrompt', () {
-    test('ChatML: system turn, history, then the assistant prefix', () {
-      expect(
-        assemblePrompt(template: chatml, history: history, userText: 'How are you?', systemPrompt: 'SYS'),
-        '<|im_start|>system\nSYS<|im_end|>\n'
-        '<|im_start|>user\nHi<|im_end|>\n'
-        '<|im_start|>assistant\nHello!<|im_end|>\n'
-        '<|im_start|>user\nHow are you?<|im_end|>\n'
-        '<|im_start|>assistant\n',
-      );
-    });
-
-    test('Gemma: no system role, so the system prompt joins the first user turn', () {
-      expect(
-        assemblePrompt(template: gemma, history: const [], userText: 'Hi', systemPrompt: 'SYS'),
-        '<start_of_turn>user\nSYS\n\nHi<end_of_turn>\n<start_of_turn>model\n',
-      );
-    });
-
-    test('the prefill prefix is an exact prefix of the final prompt', () {
-      for (final template in [chatml, gemma]) {
-        final prefix = assemblePromptPrefix(template: template, history: history, partialUserText: 'How are');
-        final full = assemblePrompt(template: template, history: history, userText: 'How are you?');
-        expect(full.startsWith(prefix), isTrue);
-        final empty = assemblePromptPrefix(template: template, history: const [], partialUserText: '');
-        expect(assemblePrompt(template: template, history: const [], userText: 'x').startsWith(empty), isTrue);
-      }
-    });
-  });
-
-  group('StopSequenceFilter', () {
-    test('cuts at a stop sequence split across tokens', () {
-      final filter = StopSequenceFilter(['<|im_end|>']);
-      final out = StringBuffer();
-      for (final token in ['Paris', ' is nice.', '<|im', '_end|>', 'garbage']) {
-        out.write(filter.push(token));
-      }
-      out.write(filter.flush());
-      expect(out.toString(), 'Paris is nice.');
-      expect(filter.isStopped, isTrue);
-    });
-
-    test('releases held text that turned out not to be a stop sequence', () {
-      final filter = StopSequenceFilter(['<|im_end|>']);
-      expect(filter.push('a <|i'), 'a ');
-      expect(filter.flush(), '<|i');
-    });
-  });
 
   test('splitCompletedSentences keeps the unfinished tail', () {
     final split = splitCompletedSentences('Hello there. How are "you?" I am');
@@ -168,41 +139,52 @@ void main() {
       await file.parent.create(recursive: true);
       await file.writeAsString('gguf');
       platform = FakeLlm();
+      final agent = DavoiceAgent.create({'pack': {}}, platform: platform);
       service = LocalLlmService(
         licenseKey: () => 'ok',
         llm: FlutterDavoiceLlm(platform: platform),
         store: store,
+        agent: () => agent,
       );
     });
 
     tearDown(() => dir.delete(recursive: true));
 
-    test('concurrent warm-ups load the model once, then prefill the system prompt', () async {
+    test('concurrent warm-ups load the model once, then set the template and prefill', () async {
       platform.loadGate = Completer<void>();
       final a = service.warmUp();
       final b = service.warmUp();
       platform.loadGate!.complete();
       await Future.wait([a, b]);
+      await pumpEventQueue();
       expect(platform.loads, 1);
       expect(service.isModelReady(localLlmDefaultModelId), isTrue);
-      expect(
-        platform.prefills.first,
-        "<|im_start|>system\n$voiceAssistantPersona\n\nToday's date is ${currentDateText()}.<|im_end|>\n<|im_start|>user\n",
-      );
+      expect(platform.agentCalls.first, startsWith('configure {"chatTemplate":{"systemPrefix":"<|im_start|>system'));
+      expect(platform.agentCalls.where((c) => c.startsWith('configure')).length, 1);
+      expect(platform.agentCalls, contains('prefill {"history":[],"text":""}'));
     });
 
     test('prefill is skipped until the model is ready', () async {
       await service.prefillForTurn(const [], 'hello');
-      expect(platform.prefills, isEmpty);
+      await pumpEventQueue();
+      expect(platform.agentCalls, isEmpty);
     });
 
-    test('generateReplyStream strips the turn-end marker and cancels at it', () async {
-      platform.script = ['Paris', '.', '<|im_end|>', 'leak'];
+    test('a turn streams the agent\'s text and passes the history and date', () async {
+      platform.script = ['Paris', '.'];
       final deltas = <String>[];
-      await service.generateReplyStream(const [], 'Capital of France?', deltas.add);
+      final history = [
+        {'role': 'user', 'text': 'Hi'},
+        {'role': 'model', 'text': 'Hello!'},
+      ];
+      final turn = await service.generateReplyStream(history, 'Capital of France?', deltas.add);
       expect(deltas.join(), 'Paris.');
-      expect(platform.cancels, 1);
-      expect(platform.prompts.single, endsWith('<|im_start|>user\nCapital of France?<|im_end|>\n<|im_start|>assistant\n'));
+      expect(turn.text, 'Paris.');
+      final call = platform.agentCalls.firstWhere((c) => c.startsWith('turn '));
+      final args = jsonDecode(call.substring(5)) as Map;
+      expect(args['text'], 'Capital of France?');
+      expect(args['history'], history);
+      expect(args['date'], currentDateText());
     });
 
     test('a rejected license fails the load and leaves it retryable', () async {
@@ -210,6 +192,7 @@ void main() {
         licenseKey: () => 'bad',
         llm: FlutterDavoiceLlm(platform: platform),
         store: service.store,
+        agent: () => DavoiceAgent.create({'pack': {}}, platform: platform),
       );
       await expectLater(
         rejected.warmUp(),

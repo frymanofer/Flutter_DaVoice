@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 
-import 'calorie_store.dart';
+import 'calorie_log.dart';
 
 /// "Calories today" card for Local AI Chat. The on-device AI changes it by
-/// voice through the calorie tools; every change shows here immediately and
-/// can be undone with the button (or by saying "undo that").
+/// voice through the calorie tools (in the native agent core); every change
+/// shows here immediately and can be undone with the button (or by saying
+/// "undo that").
 class CaloriesCard extends StatelessWidget {
   const CaloriesCard({super.key, required this.store});
 
-  final CalorieStore store;
+  final CalorieLog store;
 
   @override
   Widget build(BuildContext context) {

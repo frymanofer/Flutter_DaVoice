@@ -2,17 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'calories/calorie_store.dart';
-import 'calories/calorie_tools.dart';
+import 'agent/agent_pack.dart';
+import 'agent/local_agent.dart';
+import 'calories/calorie_log.dart';
 import 'calories/calories_card.dart';
-import 'calories/online_foods.dart';
 import 'flow/startup_narration.dart';
 import 'flow/transcript.dart';
 import 'local_llm/local_llm_service.dart';
 import 'local_llm/model_picker.dart';
-import 'local_llm/needs_web_search.dart';
-import 'local_llm/prompt.dart';
-import 'local_llm/web_search.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,7 +19,10 @@ import 'package:flutter_wake_word/flutter_wake_word.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Local AI Chat's behavior and data (assets/agent/), used synchronously later.
+  await loadAgentPack();
   runApp(const DavoiceExampleApp());
 }
 
@@ -282,23 +282,15 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   final List<Map<String, String>> _chatHistory = [];
   // Local AI Chat: on-device model (flutter_davoice_llm), same license as the
   // other DaVoice libraries.
-  // The calorie tracker the on-device AI changes by voice (demo of
-  // flutter_davoice_llm's tool calling). MCP server tools, if configured in
+  // The agent (lib/agent/local_agent.dart: web search, fillers, the calorie
+  // tracker's tools) runs the turns. MCP server tools, if configured in
   // local.config.ts, are added at warm-up.
-  final _calories = CalorieStore();
+  final _calories = CalorieLog();
   late final _localLlm = LocalLlmService(
     licenseKey: () => _licenseController.text.trim(),
-  )..setTools(
-      calorieTools(_calories),
-      instructions: calorieToolInstructions,
-      toolChoice: calorieToolChoice,
-      missingToolCallReply: calorieMissingToolReply,
-    );
+  );
   String? _mcpServerUrl;
   String? _mcpServerToken;
-  // Set during a local AI turn: says a filler while a tool waits on something
-  // online (a food lookup, a remote MCP tool).
-  void Function(String filler)? _sayWhileWaitingOnline;
   Future<void>? _mcpToolsLoaded;
   String _localModelName = '';
   String _localModelStatus = '';
@@ -359,19 +351,14 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       ).firstMatch(config)?.group(1)?.trim();
       // Local AI Chat's web search engine (all optional): WEB_SEARCH_ENGINE =
       // 'wikipedia' (default, no key) | 'tavily' | 'brave', plus the API keys.
-      WebSearch.configure(
-        engine: value('WEB_SEARCH_ENGINE') ?? 'wikipedia',
+      // Calorie demo: foods missing from the list are looked up on Wikipedia,
+      // and first on USDA FoodData Central when USDA_API_KEY is set.
+      await LocalAgent.setKeys(
+        webSearchEngine: value('WEB_SEARCH_ENGINE'),
         tavilyApiKey: value('TAVILY_API_KEY'),
         braveApiKey: value('BRAVE_API_KEY'),
+        usdaApiKey: value('USDA_API_KEY'),
       );
-      // Calorie demo: foods missing from the built-in table are looked up on
-      // Wikipedia, and first on USDA FoodData Central when USDA_API_KEY is set.
-      final usdaApiKey = value('USDA_API_KEY');
-      setFoodCalorieSources([
-        if (usdaApiKey != null && usdaApiKey.isNotEmpty) UsdaFoodSource(usdaApiKey),
-        WikipediaFoodSource(),
-      ]);
-      setOnlineFoodLookupListener((food) => _sayWhileWaitingOnline?.call(pickFoodLookupFiller(food)));
       // Optional remote MCP server for Local AI Chat's tools.
       _mcpServerUrl = value('MCP_SERVER_URL');
       _mcpServerToken = value('MCP_SERVER_TOKEN');
@@ -1281,17 +1268,16 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     await _resumeSpeechAfterTts();
   }
 
-  /// The Local AI Chat conversation so far, oldest first.
-  List<ChatTurn> _localChatHistory() => [
-        for (final message in _chatHistory) ...[
-          // A reply's tool calls and results come before it, so later prompts
-          // show that actions are done by calling tools.
-          if (message['tools'] != null)
-            for (final tool in jsonDecode(message['tools']!) as List)
-              ChatTurn(fromUser: tool['role'] == 'user', text: tool['content'] as String),
-          if ((message['text'] ?? '').isNotEmpty)
-            ChatTurn(fromUser: message['role'] == 'user', text: message['text']!),
-        ],
+  /// The Local AI Chat conversation so far, oldest first, in the agent's
+  /// shape: a reply keeps its tool calls and results (the agent puts them
+  /// before it, so later prompts show that actions are done by calling tools).
+  List<Map<String, Object?>> _localChatHistory() => [
+        for (final message in _chatHistory)
+          {
+            'role': message['role'],
+            'text': message['text'] ?? '',
+            if (message['tools'] != null) 'toolMessages': jsonDecode(message['tools']!),
+          },
       ];
 
   /// Connects the MCP server from local.config.ts once (before the first
@@ -1307,27 +1293,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
             timeout: const Duration(seconds: 8),
           );
           _log('MCP server connected (${server.client.protocolEra}): ${server.tools.map((t) => t.name).join(', ')}');
-          // MCP tools run on a remote server: say something while waiting.
-          final mcpTools = [
-            for (final tool in server.tools)
-              ToolDefinition(
-                name: tool.name,
-                description: tool.description,
-                inputSchema: tool.inputSchema,
-                requiresConfirmation: tool.requiresConfirmation,
-                handler: (args, context) {
-                  _sayWhileWaitingOnline?.call(pickOnlineToolFiller());
-                  return tool.handler(args, context);
-                },
-              ),
-          ];
-          _localLlm.setTools(
-            [...calorieTools(_calories), ...mcpTools],
-            instructions: '$calorieToolInstructions The other tools listed below come from a connected service; '
-                'use them when they help.',
-            toolChoice: calorieToolChoice,
-            missingToolCallReply: calorieMissingToolReply,
-          );
+          // They run on a remote server: the agent says a filler while they run.
+          await _localLlm.setExternalTools(server.tools);
         } catch (error) {
           _log('MCP server unavailable: $error');
         }
@@ -1441,11 +1408,10 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       var reply = '';
       var pendingSentence = '';
       var spoken = Future<void>.value();
-      var toolMessages = const <ToolTurnMessage>[];
+      var toolMessages = const <Map<String, Object?>>[];
+      String? webSource;
       var shown = '';
       late void Function(String) speakSentence;
-      // Food lookups and MCP tools say a filler through this while they wait online.
-      _sayWhileWaitingOnline = (filler) => speakSentence(filler);
       speakSentence = (String sentence) {
         final startsAfter = spoken;
         spoken = _speech.speak(
@@ -1465,49 +1431,46 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         }));
       };
 
-      // Time-sensitive question ("who is the president..."): search the web
-      // while a short phrase is spoken, so the wait isn't silent, then answer
-      // from the results. The phrases aren't part of the reply or history.
-      WebSearchOutcome? webSearch;
-      if (needsWebSearch(userText)) {
-        final searching = _localLlm.searchWeb(userText);
-        final filler = pickSearchFiller(userText);
-        setState(() {
-          _currentSpeechSentence = 'Local AI: $filler';
-          _message = 'Searching the web...';
-        });
-        speakSentence(filler);
-        webSearch = await searching;
-        if (!_isSpeechUiEpochCurrent(epoch)) return;
-        if (webSearch.failed) speakSentence(pickSearchFailedFiller());
-        setState(() {
-          _message = webSearch!.failed
-              ? 'Could not search online; answering from memory...'
-              : 'Searched online (${webSearch.source}); generating reply...';
-        });
-      }
-
       _localGenerationActive = true;
       try {
-        toolMessages = await _localLlm.generateReplyStream(history, userText, (delta) {
+        // The agent searches the web for time-sensitive questions ("who is the
+        // president...") and looks up unknown foods online; meanwhile it sends
+        // a short filler to say, so the wait isn't silent. Fillers aren't part
+        // of the reply or the history.
+        final turn = await _localLlm.generateReplyStream(history, userText, (delta) {
           if (!_isSpeechUiEpochCurrent(epoch)) return;
           reply += delta;
           final split = splitCompletedSentences(pendingSentence + delta);
           pendingSentence = split.remainder;
           split.completed.forEach(speakSentence);
           setState(() => _message = 'Streaming local AI reply...');
-        }, webSearch: webSearch);
+        }, onEvent: (event) {
+          if (!_isSpeechUiEpochCurrent(epoch)) return;
+          if (event.type == 'filler') {
+            speakSentence(event.text);
+          } else if (event.type == 'status' && event.json['status'] == 'searching') {
+            setState(() => _message = 'Searching the web...');
+          } else if (event.type == 'webSearch') {
+            setState(() {
+              _message = event.json['failed'] == true
+                  ? 'Could not search online; answering from memory...'
+                  : 'Searched online (${event.json['source']}); generating reply...';
+            });
+          }
+        });
+        toolMessages = turn.toolMessages;
+        webSource = turn.webSearch?['source'] as String?;
       } finally {
         _localGenerationActive = false;
       }
       if (!_isSpeechUiEpochCurrent(epoch)) return;
       if (pendingSentence.trim().isNotEmpty) speakSentence(pendingSentence.trim());
       reply = reply.trim();
-      _log('[AIChat][LOCAL_LLM] "$userText"${webSearch == null ? '' : ' (searched ${webSearch.source})'} -> $reply');
+      _log('[AIChat][LOCAL_LLM] "$userText"${webSource == null ? '' : ' (searched $webSource)'} -> $reply');
       _chatHistory.add({
         'role': 'model',
         'text': reply,
-        if (toolMessages.isNotEmpty) 'tools': jsonEncode([for (final m in toolMessages) m.toJson()]),
+        if (toolMessages.isNotEmpty) 'tools': jsonEncode(toolMessages),
       });
       setState(() {
         _lastTranscript = '';
@@ -1533,7 +1496,6 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       }
     } finally {
       if (_isSpeechUiEpochCurrent(epoch)) {
-        _sayWhileWaitingOnline = null;
         setState(() {
           _isAIChatLoading = false;
           _isTtsSpeaking = false;
@@ -2670,7 +2632,7 @@ class _HomeScreen extends StatelessWidget {
   final String localModelName;
   final String localModelStatus;
   final VoidCallback? onChangeLocalModel;
-  final CalorieStore? calorieStore;
+  final CalorieLog? calorieStore;
   final String currentSpeechSentence;
   final String introScript;
   final String aiChatResponse;
