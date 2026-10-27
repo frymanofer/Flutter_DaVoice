@@ -21,7 +21,7 @@ dependencies:
 
   flutter_davoice: ^0.0.12   # publish with these fixes
   flutter_wake_word: ^0.0.53  # publish with the issue-5 (filesDir) fix
-  flutter_davoice_llm: ^0.0.2  # on-device LLM + agent for Local AI Chat
+  flutter_davoice_llm: ^0.0.6  # on-device LLM + agent for Local AI Chat
 
   path_provider: ^2.1.5
   permission_handler: ^12.0.1
@@ -60,8 +60,6 @@ flutter:
     # Only the models the app loads (like the RN example's require()s): the
     # folder also holds older models that would add hundreds of MB to the app.
     - assets/models/model_ex2_rich_kate.dm
-    - assets/models/model_ex_ariana_fast_davoice_phoneme.dm
-    - assets/models/model_ex_hanna_light_davoice_ph.dm
     - assets/models/hey_coach_model_28_22012026b.dm
     - assets/models/sv.dm
     - assets/stt_bias_conf/

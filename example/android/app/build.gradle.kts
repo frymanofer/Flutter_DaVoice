@@ -28,6 +28,14 @@ android {
         versionName = flutter.versionName
     }
 
+    // The STT bias list (words_flattened.txt): the native recognizer reads it
+    // from the APK's assets, not from Flutter's; same file as iOS.
+    sourceSets {
+        getByName("main") {
+            assets.srcDir("../../assets/stt_bias_conf")
+        }
+    }
+
     packaging {
         jniLibs {
             pickFirsts += setOf(

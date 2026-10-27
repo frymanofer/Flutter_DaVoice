@@ -27,9 +27,6 @@ Future<void> main() async {
 }
 
 const _speakerId = 0;
-// RN example's useTTS2Only: when true, every voice (Ariana and Hanna too) uses
-// the shared multi-voice model.
-const _usesSharedTtsModel = false;
 const _sharedTtsModel = 'assets/models/model_ex2_rich_kate.dm';
 const _svOnboardingSampleCount = 5;
 const _androidSvUiMatchThreshold = 0.34;
@@ -38,8 +35,6 @@ const _svMatchHold = Duration(milliseconds: 750);
 // Same speeds as the RN example's src/tts/index.ts.
 const _richSpeakerSpeed = 0.95; // RICH_SPEAKER_SPEED_NEW_MODEL
 const _sharedModelSpeakerSpeed = 1.0; // KATE / ARIANA / HANNA_SPEAKER_SPEED_NEW_MODEL
-const _arianaSpeakerSpeed = 0.88; // ARIANA_SPEAKER_SPEED (own model)
-const _hannaSpeakerSpeed = 0.9; // HANNA_SPEAKER_SPEED (own model)
 const _wakewordInstanceId = 'multi_model_instance';
 const _wakewordThreshold = 0.999;
 const _wakewordBufferCount = 3;
@@ -128,8 +123,8 @@ const _defaultAudioRoutingConfig = AudioRoutingConfig(
 );
 
 /// The RN example's TTS_VOICE_OPTIONS, in the same order (the narration lists
-/// the other voices in this order). Rich, Kate, Jenny, Matthew and Gloria are
-/// voices inside the shared model; Ariana and Hanna have their own models.
+/// the other voices in this order). Every voice is a speaker of the shared
+/// model (model_ex2_rich_kate.dm).
 enum _VoiceChoice {
   ariana('Ariana'),
   rich('Rich'),
@@ -143,7 +138,6 @@ enum _VoiceChoice {
 
   final String label;
 
-  bool get inSharedModel => _usesSharedTtsModel || (this != ariana && this != hanna);
 }
 
 enum _AppModeChoice { localAiChat, fullAiChat, combined, sttOnly, typeToTts }
@@ -2128,16 +2122,12 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
 
   /// The RN example's getTTSVoiceConfig(...).model.
   String get _selectedTtsModel {
-    if (_voiceChoice.inSharedModel) return _sharedTtsModel;
-    return _voiceChoice == _VoiceChoice.hanna
-        ? 'assets/models/model_ex_hanna_light_davoice_ph.dm'
-        : 'assets/models/model_ex_ariana_fast_davoice_phoneme.dm';
+    return _sharedTtsModel;
   }
 
   String? _appliedTtsVoice;
 
   Future<void> _applySelectedTtsVoice() async {
-    if (!_voiceChoice.inSharedModel) return;
     final voice = _voiceName;
     if (_appliedTtsVoice == voice) return;
     final result = await _speech.changeVoice(voice);
@@ -2160,10 +2150,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     switch (_voiceChoice) {
       case _VoiceChoice.rich:
         return _richSpeakerSpeed;
-      case _VoiceChoice.ariana:
-        return _usesSharedTtsModel ? _sharedModelSpeakerSpeed : _arianaSpeakerSpeed;
       case _VoiceChoice.hanna:
-        return _usesSharedTtsModel ? _sharedModelSpeakerSpeed : _hannaSpeakerSpeed;
+      case _VoiceChoice.ariana:
       case _VoiceChoice.kate:
       case _VoiceChoice.jenny:
       case _VoiceChoice.matthew:

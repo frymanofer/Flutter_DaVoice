@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C40C78E7B2B804375CBAC7DE /* words_flattened.txt in Resources */ = {isa = PBXBuildFile; fileRef = E99D3217299C9DFFCACEC7F4 /* words_flattened.txt */; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		36DDC6B32F96686A00A85AB1 /* hey_coach_model_28_22012026b.onnx in Resources */ = {isa = PBXBuildFile; fileRef = 36DDC6B22F96686A00A85AB1 /* hey_coach_model_28_22012026b.onnx */; };
@@ -46,6 +47,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		E99D3217299C9DFFCACEC7F4 /* words_flattened.txt */ = {isa = PBXFileReference; lastKnownFileType = text; name = words_flattened.txt; path = ../assets/stt_bias_conf/words_flattened.txt; sourceTree = SOURCE_ROOT; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
@@ -163,6 +165,7 @@
 			isa = PBXGroup;
 			children = (
 				36DDC6B42F9749E900A85AB1 /* speaker_model.dm */,
+				E99D3217299C9DFFCACEC7F4 /* words_flattened.txt */,
 				36DDC6B22F96686A00A85AB1 /* hey_coach_model_28_22012026b.onnx */,
 				97C146FA1CF9000F007C117D /* Main.storyboard */,
 				97C146FD1CF9000F007C117D /* Assets.xcassets */,
@@ -279,6 +282,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				36DDC6B52F9749E900A85AB1 /* speaker_model.dm in Resources */,
+				C40C78E7B2B804375CBAC7DE /* words_flattened.txt in Resources */,
 				97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */,
 				3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */,
 				97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */,

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_davoice_llm/flutter_davoice_llm.dart';
 import 'package:path_provider/path_provider.dart';
@@ -11,6 +12,41 @@ import 'agent_pack.dart';
 // tracker's tools, builds the prompt and runs the model. The calorie log and
 // food list live in its SQLite database. Port of the RN example's
 // src/agent/LocalAgent.ts.
+
+// The router's sentence-embedding model (all-MiniLM-L6-v2, 25 MB): the agent
+// decides what a turn needs (web search, a calorie tool, neither) by comparing
+// the user's words with example sentences. Downloaded once; until then the
+// router compares words directly.
+const _embeddingModelUrl =
+    'https://huggingface.co/second-state/All-MiniLM-L6-v2-Embedding-GGUF/resolve/main/all-MiniLM-L6-v2-Q8_0.gguf';
+
+Future<void> _setUpRouterEmbeddings(DavoiceAgent agent, Directory dir) async {
+  try {
+    final models = Directory('${dir.path}/models');
+    final file = File('${models.path}/all-MiniLM-L6-v2-Q8_0.gguf');
+    if (!await file.exists()) {
+      await models.create(recursive: true);
+      final tmp = File('${file.path}.download');
+      final client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
+      try {
+        final response = await (await client.getUrl(Uri.parse(_embeddingModelUrl))).close();
+        if (response.statusCode != 200) throw HttpException('HTTP ${response.statusCode}');
+        await response.pipe(tmp.openWrite());
+      } finally {
+        client.close();
+      }
+      await tmp.rename(file.path);
+    }
+    await agent.configure({
+      'router': {'embeddingModel': file.path},
+    });
+    // ignore: avoid_print
+    print('[DavoiceAgent] router embedding model set');
+  } catch (error) {
+    // ignore: avoid_print
+    print('[DavoiceAgent] router embedding model not available (word overlap is used): $error');
+  }
+}
 
 class LocalAgent {
   LocalAgent._();
@@ -52,7 +88,7 @@ class LocalAgent {
   static Future<DavoiceAgent> get() => _agent ??= () async {
         try {
           final dir = await getApplicationSupportDirectory();
-          return await DavoiceAgent.create({
+          final agent = await DavoiceAgent.create({
             'pack': {
               'agent': agentPack.agent,
               'skills': [
@@ -63,6 +99,9 @@ class LocalAgent {
               ],
             },
             'databasePath': '${dir.path}/davoice_agent.db',
+            // The whole chat (user, model outputs, tools, replies), readable
+            // off the phone even when the console drops lines.
+            'chatLogPath': '${dir.path}/davoice_chat.log',
             ..._keys,
           }, onEvent: (event) {
             // ignore: avoid_print
@@ -71,6 +110,8 @@ class LocalAgent {
               listener(event);
             }
           });
+          unawaited(_setUpRouterEmbeddings(agent, dir)); // in the background: turns work meanwhile
+          return agent;
         } catch (_) {
           _agent = null; // retry on next use
           rethrow;
