@@ -27,6 +27,8 @@ Future<void> main() async {
 }
 
 const _speakerId = 0;
+// Id of the app's single enrolled speaker (live speaker-verification API).
+const _svSpeakerId = 'user';
 const _sharedTtsModel = 'assets/models/model_ex2_rich_kate.dm';
 const _svOnboardingSampleCount = 5;
 const _androidSvUiMatchThreshold = 0.34;
@@ -555,8 +557,14 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   Future<void> _continueFromVoicePicker() async {
     await _runBusy(() async {
       if (_loadedTtsModel != _selectedTtsModel) {
-        await _speech.destroyAll();
-        await _initializeSpeech(null);
+        // Like the RN example: the wake word pauses (mic kept) while speech reloads.
+        await _pauseWakeWordDetection();
+        try {
+          await _speech.destroyAll();
+          await _initializeSpeech(null);
+        } finally {
+          await _unPauseWakeWordDetection();
+        }
       }
       await _applySelectedTtsVoice();
       await _speakStartupNarration([
@@ -971,6 +979,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         locale: _locale,
         model: _selectedTtsModel,
         onboardingJsonPath: enrollmentJsonPath,
+        speakerId: _svSpeakerId,
       ),
     );
     if (!mounted) {
@@ -984,27 +993,19 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
 
   Future<void> _finishSpeakerVerification() async {
     await _runBusy(() async {
-      final enrollment = _enrollmentJsonPath;
-      if (enrollment != null) {
-        await _speech.stopSpeaking();
-        await _speech.destroyAll();
-        await _initializeSpeech(enrollment);
-        if (!mounted) return;
-        final wakeword = _wakeword!;
-        await wakeword.stopKeywordDetection(_wakewordInstanceId);
-        final started = await wakeword.startKeywordDetection(
-          _wakewordInstanceId,
-          _wakewordThreshold,
-          speakerVerificationEnrollmentJsonOrPath: enrollment,
-        );
-        if (!started) {
-          throw StateError(
-            'Wake-word detection with speaker verification failed to start.',
-          );
+      var enrollment = _enrollmentJsonPath;
+      // Enroll the speaker into the already-running wake word and STT (live
+      // API, like the RN example): no destroyAll()/initAll() and no wake-word
+      // restart; both libraries apply the change immediately.
+      try {
+        await _applySpeakerVerificationChoice(enrollment);
+      } catch (error) {
+        _log('[SV] applying speaker verification failed: $error');
+        enrollment = null;
+        _enrollmentJsonPath = null;
+        if (mounted) {
+          setState(() => _message = 'Speaker verification could not be enabled. Continuing without it.');
         }
-        await _pauseWakeWordDetection();
-        await Future<void>.delayed(const Duration(milliseconds: 100));
-        await _unPauseWakeWordDetection();
       }
       if (!mounted) return;
       await _speakStartupNarration([
@@ -1020,6 +1021,26 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         _message = 'Say the wake word "Hey Coach" to continue.';
       });
     });
+  }
+
+  /// Live speaker verification: enrolls [enrollmentJsonPath] as the app's
+  /// speaker in the running wake word and STT, or (null: skipped) clears any
+  /// speaker left from an earlier run.
+  Future<void> _applySpeakerVerificationChoice(String? enrollmentJsonPath) async {
+    final wakeword = _wakeword;
+    if (enrollmentJsonPath != null && enrollmentJsonPath.isNotEmpty) {
+      _log('[SV] live addSpeaker $_svSpeakerId $enrollmentJsonPath');
+      if (wakeword != null) {
+        final wakewordIds = await wakeword.addSpeaker(_svSpeakerId, enrollmentJsonPath);
+        _log('[SV] wake word speakers: $wakewordIds');
+      }
+      final sttIds = await _speech.addSpeaker(_svSpeakerId, enrollmentJsonPath);
+      _log('[SV] STT speakers: $sttIds');
+    } else {
+      _log('[SV] skipped; clearing speakers');
+      if (wakeword != null) await wakeword.setSpeakers(const []);
+      await _speech.setSpeakers(const []);
+    }
   }
 
   Future<void> _continueFromModePicker() async {
