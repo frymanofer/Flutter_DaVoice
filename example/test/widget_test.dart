@@ -9,8 +9,6 @@ import 'package:flutter_davoice/flutter_davoice_method_channel.dart';
 void main() {
   const sharedModel = 'assets/models/model_ex2_rich_kate.dm';
   for (final selectedVoice in ['Rich', 'Kate', 'Gloria', 'Hanna', 'Ariana']) {
-    // Rich, Kate, Jenny, Matthew and Gloria are voices in the shared model.
-    final inSharedModel = selectedVoice != 'Hanna' && selectedVoice != 'Ariana';
     testWidgets(
       'Rich startup and $selectedVoice selection load the correct model',
       (tester) async {
@@ -86,16 +84,23 @@ void main() {
           await tester.pump(const Duration(milliseconds: 100));
         }
         expect(calls, contains('speech.initAll'));
-        expect(find.text('Choose Voice'), findsNothing);
+        expect(find.text('Choose Your Voice'), findsNothing);
         await tester.tap(find.text('Skip Narration'));
         await tester.pump();
         expect(calls, isNot(contains('speech.stopSpeaking')));
         init.complete();
+        // Real async too: loading the cloned voices creates their folder.
         for (var i = 0; i < 10; i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 10)),
+          );
           await tester.pump(const Duration(milliseconds: 100));
         }
-        expect(find.text('Choose Voice'), findsOneWidget);
+        expect(find.text('Choose Your Voice'), findsOneWidget);
         expect(find.text('Lite'), findsNothing);
+        expect(find.text('Clone a new Voice'), findsOneWidget);
+        expect(find.text('Cloned Voices'), findsOneWidget);
+        expect(find.text('Built-in Voices'), findsOneWidget);
         for (final voice in ['Ariana', 'Rich', 'Hanna', 'Kate', 'Jenny', 'Matthew', 'Gloria']) {
           expect(find.text(voice), findsOneWidget);
         }
@@ -126,14 +131,10 @@ void main() {
           );
           await tester.pump(const Duration(milliseconds: 100));
         }
-        // A voice in the shared model is switched without reloading it.
-        expect(voices, inSharedModel && selectedVoice != 'Rich' ? ['Rich', selectedVoice] : ['Rich']);
-        final selectedModel = switch (selectedVoice) {
-          'Hanna' => 'assets/models/model_ex_hanna_light_davoice_ph.dm',
-          'Ariana' => 'assets/models/model_ex_ariana_fast_davoice_phoneme.dm',
-          _ => sharedModel,
-        };
-        expect(models, inSharedModel ? [sharedModel] : [sharedModel, selectedModel]);
+        // Every built-in voice is a voice in the shared model: it is
+        // switched without reloading the model.
+        expect(voices, selectedVoice != 'Rich' ? ['Rich', selectedVoice] : ['Rich']);
+        expect(models, [sharedModel]);
         expect(find.text('Skip'), findsOneWidget);
         await tester.ensureVisible(find.text('Skip'));
         await tester.tap(find.text('Skip'));
@@ -142,7 +143,7 @@ void main() {
         }
         expect(
           calls.where((call) => call == 'speech.initAll'),
-          hasLength(inSharedModel ? 1 : 2),
+          hasLength(1),
         );
         expect(
           calls.where((call) => call == 'wakeword.createInstanceMulti'),

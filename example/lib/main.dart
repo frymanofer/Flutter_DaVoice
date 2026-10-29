@@ -10,8 +10,10 @@ import 'flow/startup_narration.dart';
 import 'flow/transcript.dart';
 import 'local_llm/local_llm_service.dart';
 import 'local_llm/model_picker.dart';
+import 'voice_clone/voice_clone.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_davoice/flutter_davoice.dart';
 import 'package:flutter_davoice_llm/flutter_davoice_llm.dart';
@@ -37,6 +39,7 @@ const _svMatchHold = Duration(milliseconds: 750);
 // Same speeds as the RN example's src/tts/index.ts.
 const _richSpeakerSpeed = 0.95; // RICH_SPEAKER_SPEED_NEW_MODEL
 const _sharedModelSpeakerSpeed = 1.0; // KATE / ARIANA / HANNA_SPEAKER_SPEED_NEW_MODEL
+const _clonedVoiceSpeed = 1.0; // CLONED_VOICE_SPEED
 const _wakewordInstanceId = 'multi_model_instance';
 const _wakewordThreshold = 0.999;
 const _wakewordBufferCount = 3;
@@ -54,6 +57,11 @@ const _rnText = Color(0xffffffff);
 const _rnMutedText = Color(0xb3ffffff);
 const _rnSoftBorder = Color(0x24ffffff);
 const _rnSoftFill = Color(0x14ffffff);
+// Voice cloning (the RN example's clone* styles).
+const _cloneNewVoiceColor = Color(0xffaf52de);
+const _cloneDeleteColor = Color(0xd9ff3b30);
+const _cloneRedColor = Color(0xffff3b30);
+const _cloneStopColor = Color(0xffff9500);
 const _hdAudioOptions = [
   WakewordAudioOption.mixWithOthers,
   WakewordAudioOption.bluetoothHighQualityRecording,
@@ -124,29 +132,18 @@ const _defaultAudioRoutingConfig = AudioRoutingConfig(
   wakeWordDuringTTS: WakeWordDuringTTSConfig(threshold: 0.9, bufferCount: 1),
 );
 
-/// The RN example's TTS_VOICE_OPTIONS, in the same order (the narration lists
-/// the other voices in this order). Every voice is a speaker of the shared
-/// model (model_ex2_rich_kate.dm).
-enum _VoiceChoice {
-  ariana('Ariana'),
-  rich('Rich'),
-  hanna('Hanna'),
-  kate('Kate'),
-  jenny('Jenny'),
-  matthew('Matthew'),
-  gloria('Gloria');
-
-  const _VoiceChoice(this.label);
-
-  final String label;
-
-}
+/// The RN example's TTS_VOICE_OPTIONS: the built-in voices, in the same order.
+/// Every voice is a speaker of the shared model (model_ex2_rich_kate.dm), and
+/// so is every cloned voice (lib/voice_clone/voice_clone.dart).
+const _builtInVoices = ['Ariana', 'Rich', 'Hanna', 'Kate', 'Jenny', 'Matthew', 'Gloria'];
+const _defaultVoice = 'Rich';
 
 enum _AppModeChoice { localAiChat, fullAiChat, combined, sttOnly, typeToTts }
 
 enum _Stage {
   preparing,
   voicePicker,
+  voiceClone,
   svPrompt,
   svStatus,
   modePicker,
@@ -230,7 +227,27 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   _Stage _stage = _Stage.preparing;
   final _narration = StartupNarration();
   String? _loadedTtsModel;
-  _VoiceChoice _voiceChoice = _VoiceChoice.rich;
+  // A built-in voice or the name of a cloned voice.
+  String _voiceChoice = _defaultVoice;
+  // Voice cloning (lib/voice_clone/voice_clone.dart): the cloned voices found
+  // in the cloned voices folder, and the "Clone a new Voice" screen.
+  List<String> _clonedVoices = const [];
+  String _clonedVoicesFolder = '';
+  final _cloneNameController = TextEditingController();
+  bool _cloneUseMicrophone = true;
+  // Voice volume in percent (100 = the recording's loudness), sent as volume = percent / 100.
+  int _cloneVolumePercent = defaultVoiceVolumePercent;
+  bool _cloneRecording = false;
+  double _cloneRecordSeconds = 0;
+  double _cloneRecordPeak = 0;
+  ({String path, String label})? _cloneAudio;
+  bool _cloneBusy = false;
+  String? _cloneError;
+  VoiceCloneResult? _cloneResult;
+  Timer? _cloneStatusTimer;
+  // "Use Microphone" scrolls the clone screen down to the record button.
+  final _cloneScrollController = ScrollController();
+  final _cloneRecordButtonKey = GlobalKey();
   _AppModeChoice _appModeChoice = _AppModeChoice.combined;
   String _message = 'Preparing voice demo...';
   bool _setupFailed = false;
@@ -314,6 +331,10 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     unawaited(_wakewordSubscription?.cancel());
     _ttsController.dispose();
     _licenseController.dispose();
+    _cloneStatusTimer?.cancel();
+    if (_cloneRecording) unawaited(cancelVoiceRecording());
+    _cloneNameController.dispose();
+    _cloneScrollController.dispose();
     _speechSilenceTimer?.cancel();
     unawaited(_wakeword?.stopKeywordDetection(_wakewordInstanceId));
     unawaited(_wakeword?.destroyInstance());
@@ -506,10 +527,13 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       if (!mounted) return;
       await _initializeSpeechAndWakeWord(null);
       if (!mounted) return;
+      final cloningChoices = _clonedVoices.isNotEmpty
+          ? 'You can either clone a new voice, select from your cloned voices, or select from the built-in voices.'
+          : 'You can either clone a new voice, or select from the built-in voices.';
       await _speakStartupNarration([
         'Hey there, My name is $_voiceName. In this application we will use my cloned voice in order to showcase our voice AI agent capabilities.',
         "Don't worry. I will be your personal guide to walk you through this demonstration step by step.",
-        'First, please choose which voice you want to use. You can stay with me, $_voiceName, or switch to $_otherVoiceNames.',
+        'First, please choose which voice you want to use. $cloningChoices',
       ]);
       if (!mounted) return;
       setState(() {
@@ -568,9 +592,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       }
       await _applySelectedTtsVoice();
       await _speakStartupNarration([
-        _voiceChoice == _VoiceChoice.rich
-            ? 'Awesome, Thanks for choosing to stay with me.'
-            : 'Awesome, You chose $_voiceName.',
+        'You selected $_voiceName.',
         'The next phase, is setting speaker verification. You can create a new speaker signature, use a saved one, or skip this step.',
       ]);
       await _loadSavedEnrollmentJson();
@@ -987,6 +1009,10 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       return;
     }
     _loadedTtsModel = _selectedTtsModel;
+    // Cloned voices: a (re)load forgets the folder, so set it again.
+    final clonedVoices = await loadClonedVoices(_speech);
+    if (!mounted) return;
+    _updateClonedVoices(clonedVoices);
     await _applySelectedTtsVoice();
     await _speech.pauseSpeechRecognition();
   }
@@ -2158,27 +2184,275 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     _appliedTtsVoice = voice;
   }
 
+  // ---- Voice cloning screen ----
+
+  void _updateClonedVoices(List<String> names) {
+    if (!mounted) return;
+    setState(() => _clonedVoices = names);
+  }
+
+  static String _errorText(Object error) =>
+      error is PlatformException ? (error.message ?? error.code) : '$error';
+
+  Future<void> _openVoiceCloneScreen() async {
+    final folder = await clonedVoicesPath();
+    if (!mounted) return;
+    _cloneNameController.clear();
+    setState(() {
+      _clonedVoicesFolder = folder;
+      _cloneUseMicrophone = true;
+      _cloneVolumePercent = defaultVoiceVolumePercent;
+      _cloneAudio = null;
+      _cloneError = null;
+      _cloneResult = null;
+      _cloneRecordSeconds = 0;
+      _cloneRecordPeak = 0;
+      _stage = _Stage.voiceClone;
+    });
+  }
+
+  Future<void> _closeVoiceCloneScreen() async {
+    if (_cloneRecording) await _stopCloneRecording(discard: true);
+    if (!mounted) return;
+    setState(() => _stage = _Stage.voicePicker);
+  }
+
+  Future<void> _startCloneRecording() async {
+    if (_cloneRecording) return;
+    setState(() {
+      _cloneError = null;
+      _cloneResult = null;
+      _cloneAudio = null;
+    });
+    try {
+      // The wake word releases the microphone while the sample is recorded
+      // (speech recognition is already paused on this screen).
+      await _wakeword?.pauseDetection(stopMic: true);
+      await startVoiceRecording();
+      if (!mounted) return;
+      setState(() {
+        _cloneRecording = true;
+        _cloneRecordSeconds = 0;
+        _cloneRecordPeak = 0;
+      });
+      _cloneStatusTimer = Timer.periodic(const Duration(milliseconds: 200), (_) async {
+        try {
+          final status = await getVoiceRecordingStatus();
+          if (!mounted || !_cloneRecording) return;
+          setState(() {
+            _cloneRecordSeconds = status.seconds;
+            _cloneRecordPeak = status.peak;
+          });
+          if (status.seconds >= maxRecordingSeconds) unawaited(_stopCloneRecording(discard: false));
+        } catch (_) {
+          // the next tick tries again
+        }
+      });
+    } catch (error) {
+      try {
+        await _wakeword?.unPauseDetection();
+      } catch (_) {}
+      if (mounted) setState(() => _cloneError = 'Recording could not start: ${_errorText(error)}');
+    }
+  }
+
+  Future<void> _stopCloneRecording({required bool discard}) async {
+    if (!_cloneRecording) return;
+    _cloneStatusTimer?.cancel();
+    _cloneStatusTimer = null;
+    if (mounted) {
+      setState(() => _cloneRecording = false);
+    } else {
+      _cloneRecording = false;
+    }
+    try {
+      if (discard) {
+        await cancelVoiceRecording();
+      } else {
+        final recording = await stopVoiceRecording();
+        if (mounted) {
+          setState(() {
+            _cloneAudio = (
+              path: recording.path,
+              label: 'Microphone recording (${recording.seconds.toStringAsFixed(1)} s)',
+            );
+            if (recording.seconds < 4) {
+              _cloneError =
+                  'The recording is very short. Record about $recommendedRecordingSeconds seconds for a good voice.';
+            }
+          });
+        }
+      }
+    } catch (error) {
+      if (mounted) setState(() => _cloneError = 'Recording failed: ${_errorText(error)}');
+    } finally {
+      try {
+        await _wakeword?.unPauseDetection();
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _pickCloneFile() async {
+    setState(() {
+      _cloneError = null;
+      _cloneResult = null;
+    });
+    try {
+      final file = await pickVoiceAudioFile();
+      if (file != null && mounted) setState(() => _cloneAudio = (path: file.path, label: file.name));
+    } catch (error) {
+      if (mounted) setState(() => _cloneError = 'The file could not be opened: ${_errorText(error)}');
+    }
+  }
+
+  Future<void> _createVoiceFromSample() async {
+    final problem = voiceNameProblem(_cloneNameController.text, _builtInVoices);
+    if (problem != null) {
+      setState(() => _cloneError = problem);
+      return;
+    }
+    final audio = _cloneAudio;
+    if (audio == null) {
+      setState(() => _cloneError = _cloneUseMicrophone ? 'Record your voice first.' : 'Choose an audio file first.');
+      return;
+    }
+    setState(() {
+      _cloneBusy = true;
+      _cloneError = null;
+      _cloneResult = null;
+    });
+    try {
+      final result = await createClonedVoice(_speech, audio.path, _cloneNameController.text,
+          volume: _cloneVolumePercent / 100);
+      // A voice with the same name was replaced: select it again before it speaks.
+      _appliedTtsVoice = null;
+      final names = await loadClonedVoices(_speech);
+      if (!mounted) return;
+      setState(() => _cloneResult = result);
+      _updateClonedVoices(names);
+    } catch (error) {
+      if (mounted) setState(() => _cloneError = 'The voice could not be created: ${_errorText(error)}');
+    } finally {
+      if (mounted) setState(() => _cloneBusy = false);
+    }
+  }
+
+  // A new volume needs a new voice: clear the result so "Create Voice" shows
+  // again (the same name replaces the voice).
+  void _changeCloneVolume(int delta) {
+    setState(() {
+      _cloneVolumePercent = (_cloneVolumePercent + delta).clamp(minVoiceVolumePercent, maxVoiceVolumePercent);
+      _cloneResult = null;
+    });
+  }
+
+  Future<void> _listenToClonedVoice() async {
+    final result = _cloneResult;
+    if (result == null) return;
+    try {
+      // The narrator's voice is selected again before it next speaks.
+      _appliedTtsVoice = null;
+      await _speech.changeVoice(result.voice);
+      await _speech.speak(
+        _applyTtsTextPolicy('Hi! I am ${result.voice}. This is my new cloned voice.'),
+        speed: _speedFor(result.voice),
+      );
+    } catch (error) {
+      if (mounted) setState(() => _cloneError = 'The voice could not be played: ${_errorText(error)}');
+    }
+  }
+
+  // Scrolls the clone screen so the record button sits near the bottom of the
+  // screen, with the text to read above it (after this frame's layout).
+  void _chooseMicrophoneSample() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final button = _cloneRecordButtonKey.currentContext?.findRenderObject();
+      if (button == null || !button.attached || !_cloneScrollController.hasClients) return;
+      final position = _cloneScrollController.position;
+      final offset = RenderAbstractViewport.of(button).getOffsetToReveal(button, 1.0).offset + 32;
+      _cloneScrollController.animateTo(
+        offset.clamp(position.minScrollExtent, position.maxScrollExtent).toDouble(),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  Future<void> _playCloneSample() async {
+    final audio = _cloneAudio;
+    if (audio == null) return;
+    try {
+      // The whole sample, as recorded or uploaded.
+      await _speech.playWav(audio.path, markAsLast: false);
+    } catch (error) {
+      if (mounted) setState(() => _cloneError = 'The recording could not be played: ${_errorText(error)}');
+    }
+  }
+
+  Future<void> _confirmDeleteClonedVoice(String name) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Cloned Voice'),
+        content: Text('Delete the voice "$name"? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: const Color(0xffff3b30)),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await _removeClonedVoice(name);
+  }
+
+  Future<void> _removeClonedVoice(String name) async {
+    try {
+      final names = await deleteClonedVoice(_speech, name);
+      if (!mounted) return;
+      _updateClonedVoices(names);
+      if (_voiceChoice == name) setState(() => _voiceChoice = _defaultVoice);
+      if (_appliedTtsVoice == name) {
+        // The narrator was using it: back to the selected voice.
+        _appliedTtsVoice = null;
+        await _applySelectedTtsVoice();
+      }
+    } catch (error) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete Cloned Voice'),
+          content: Text('The voice could not be deleted: ${_errorText(error)}'),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+        ),
+      );
+    }
+  }
+
+  void _chooseClonedVoice() {
+    final result = _cloneResult;
+    if (result == null) return;
+    setState(() {
+      _voiceChoice = result.voice;
+      _stage = _Stage.voicePicker;
+    });
+  }
+
   String get _wakewordModel => 'assets/models/hey_coach_model_28_22012026b.dm';
   String get _speakerModel => 'assets/models/sv.dm';
 
-  String get _voiceName => _voiceChoice.label;
+  String get _voiceName => _voiceChoice;
 
-  String get _otherVoiceNames =>
-      _VoiceChoice.values.where((voice) => voice != _voiceChoice).map((voice) => voice.label).join(' or ');
+  double get _speakerSpeed => _speedFor(_voiceChoice);
 
   /// The RN example's getTTSVoiceConfig(...).speed.
-  double get _speakerSpeed {
-    switch (_voiceChoice) {
-      case _VoiceChoice.rich:
-        return _richSpeakerSpeed;
-      case _VoiceChoice.hanna:
-      case _VoiceChoice.ariana:
-      case _VoiceChoice.kate:
-      case _VoiceChoice.jenny:
-      case _VoiceChoice.matthew:
-      case _VoiceChoice.gloria:
-        return _sharedModelSpeakerSpeed;
-    }
+  static double _speedFor(String voice) {
+    if (voice == 'Rich') return _richSpeakerSpeed;
+    if (_builtInVoices.contains(voice)) return _sharedModelSpeakerSpeed;
+    return _clonedVoiceSpeed;
   }
 
   static int _readInt(Object? value, int fallback) {
@@ -2288,6 +2562,306 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     );
   }
 
+  // Two per row, like the RN example's voice grid.
+  Widget _voiceGrid(List<String> voices) {
+    return LayoutBuilder(
+      builder: (context, constraints) => Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          for (final voice in voices)
+            SizedBox(
+              width: (constraints.maxWidth - 10) / 2,
+              child: _ChoiceButton(
+                label: voice,
+                selected: _voiceChoice == voice,
+                onPressed: _isBusy ? null : () => setState(() => _voiceChoice = voice),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVoiceCloneScreen() {
+    final name = _cloneNameController.text.trim().toLowerCase();
+    final existingClone = _clonedVoices.where((voice) => voice.toLowerCase() == name).firstOrNull;
+    final seconds = _cloneRecordSeconds.floor();
+    final recordClock = '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+    final clipping = _cloneRecordPeak > 0.97;
+    final audio = _cloneAudio;
+    final result = _cloneResult;
+    return _PromptShell(
+      message: '',
+      scrollController: _cloneScrollController,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _PromptTitle('Clone a New Voice'),
+          const SizedBox(height: 10),
+          const Text(
+            'Record one person speaking for about $recommendedRecordingSeconds seconds, or upload a recording of one person speaking.',
+            textAlign: TextAlign.center,
+            style: _Styles.body,
+          ),
+          const SizedBox(height: 18),
+          _OptionLabel('Voice Name'),
+          TextField(
+            controller: _cloneNameController,
+            enabled: !_cloneBusy,
+            style: const TextStyle(color: _rnText, fontSize: 16),
+            decoration: const InputDecoration(hintText: 'For example: Dana'),
+            textCapitalization: TextCapitalization.words,
+            autocorrect: false,
+            inputFormatters: [LengthLimitingTextInputFormatter(30)],
+            textInputAction: TextInputAction.done,
+            onChanged: (_) => setState(() => _cloneError = null),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            existingClone != null
+                ? 'Replaces your cloned voice "$existingClone".'
+                : 'The voice appears under this name in the voice list. Letters, digits, spaces and dashes.',
+            style: _Styles.small,
+          ),
+          const SizedBox(height: 18),
+          _OptionLabel('Voice Sample'),
+          Row(
+            children: [
+              for (final mic in [true, false]) ...[
+                if (!mic) const SizedBox(width: 10),
+                Expanded(
+                  child: _ChoiceButton(
+                    label: mic ? 'Use Microphone' : 'Upload a File',
+                    selected: _cloneUseMicrophone == mic,
+                    onPressed: _cloneRecording || _cloneBusy
+                        ? null
+                        : () {
+                            setState(() {
+                              _cloneUseMicrophone = mic;
+                              _cloneAudio = null;
+                              _cloneError = null;
+                              _cloneResult = null;
+                            });
+                            if (mic) _chooseMicrophoneSample();
+                          },
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 18),
+          if (_cloneUseMicrophone) ...[
+            const Text(
+              'In a quiet room, read this text aloud in your natural voice, at a steady distance from the phone:',
+              style: _Styles.small,
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: _rnSoftFill, borderRadius: BorderRadius.circular(12)),
+              child: const Text(
+                voiceCloneReadingText,
+                style: TextStyle(color: _rnText, fontSize: 16, height: 1.5),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                SizedBox(
+                  width: 52,
+                  child: Text(
+                    recordClock,
+                    style: const TextStyle(
+                      color: _rnText,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(5),
+                    child: Container(
+                      height: 10,
+                      color: const Color(0x26ffffff),
+                      alignment: Alignment.centerLeft,
+                      child: FractionallySizedBox(
+                        widthFactor: _cloneRecordPeak.clamp(0.0, 1.0),
+                        heightFactor: 1,
+                        child: ColoredBox(color: clipping ? _cloneRedColor : _rnGreen),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _cloneRecording
+                  ? clipping
+                      ? 'Too loud: move the phone a little further away.'
+                      : _cloneRecordSeconds < recommendedRecordingSeconds
+                          ? 'Keep reading: about $recommendedRecordingSeconds seconds is best.'
+                          : 'Good. Stop when you finish the sentence.'
+                  : 'Recording stops by itself after $maxRecordingSeconds seconds.',
+              style: _Styles.small,
+            ),
+            const SizedBox(height: 10),
+            FilledButton(
+              key: _cloneRecordButtonKey,
+              style: _buttonStyle(_cloneRecording ? _cloneStopColor : _cloneRedColor),
+              onPressed: _cloneBusy
+                  ? null
+                  : () => unawaited(
+                        _cloneRecording ? _stopCloneRecording(discard: false) : _startCloneRecording(),
+                      ),
+              child: Text(_cloneRecording ? 'Stop Recording' : audio != null ? 'Record Again' : 'Start Recording'),
+            ),
+          ] else ...[
+            const Text(
+              'A recording of one person speaking, without music: wav, mp3, m4a, aac, flac or ogg.',
+              style: _Styles.small,
+            ),
+            const SizedBox(height: 10),
+            _SecondaryButton(
+              label: audio != null ? 'Choose Another File' : 'Choose Audio File',
+              onPressed: _cloneBusy ? null : () => unawaited(_pickCloneFile()),
+            ),
+          ],
+          const SizedBox(height: 14),
+          if (audio != null && !_cloneRecording) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Sample: ${audio.label}', style: const TextStyle(color: _rnText, fontSize: 14)),
+                ),
+                const SizedBox(width: 10),
+                FilledButton(
+                  style: _buttonStyle(const Color(0x33ffffff)).copyWith(
+                    padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+                  ),
+                  onPressed: _cloneBusy ? null : () => unawaited(_playCloneSample()),
+                  child: const Text('Play Recording'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+          ],
+          _OptionLabel('Voice Volume'),
+          Row(
+            children: [
+              SizedBox(
+                width: 52,
+                child: _ChoiceButton(
+                  label: '−',
+                  selected: false,
+                  onPressed: _cloneBusy || _cloneVolumePercent <= minVoiceVolumePercent
+                      ? null
+                      : () => _changeCloneVolume(-voiceVolumeStep),
+                ),
+              ),
+              const SizedBox(width: 16),
+              SizedBox(
+                width: 64,
+                child: Text(
+                  '$_cloneVolumePercent%',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: _rnText,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              SizedBox(
+                width: 52,
+                child: _ChoiceButton(
+                  label: '+',
+                  selected: false,
+                  onPressed: _cloneBusy || _cloneVolumePercent >= maxVoiceVolumePercent
+                      ? null
+                      : () => _changeCloneVolume(voiceVolumeStep),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _cloneVolumePercent == defaultVoiceVolumePercent
+                ? 'Same loudness as the recording.'
+                : '${(_cloneVolumePercent - 100).abs()}% ${_cloneVolumePercent > 100 ? 'louder' : 'quieter'} than the recording.',
+            style: _Styles.small,
+          ),
+          const SizedBox(height: 14),
+          if (_cloneError != null) ...[
+            Text(_cloneError!, style: const TextStyle(color: Color(0xffff6b6b), fontSize: 14, height: 1.4)),
+            const SizedBox(height: 6),
+          ],
+          if (result != null)
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0x1f34c759),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0x6634c759)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Voice "${result.voice}" is ready.', style: _Styles.bodyStrong),
+                  if (result.warnings.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    const Text(
+                      'The recording has little clear speech, so the voice may not sound its best. For a better voice, record again for about $recommendedRecordingSeconds seconds in a quiet room.',
+                      style: TextStyle(color: Color(0xffffb340), fontSize: 13, height: 1.45),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _ChoiceButton(
+                          label: 'Listen',
+                          selected: false,
+                          onPressed: () => unawaited(_listenToClonedVoice()),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _ChoiceButton(label: 'Use This Voice', selected: true, onPressed: _chooseClonedVoice),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            )
+          else
+            _PrimaryButton(
+              label: _cloneBusy ? 'Creating Voice...' : 'Create Voice',
+              onPressed: _cloneBusy || _cloneRecording ? null : () => unawaited(_createVoiceFromSample()),
+            ),
+          const SizedBox(height: 10),
+          _SecondaryButton(
+            label: 'Back to Voices',
+            onPressed: _cloneBusy ? null : () => unawaited(_closeVoiceCloneScreen()),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Cloned voices folder: $_clonedVoicesFolder',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Color(0x73ffffff), fontSize: 11, height: 1.45),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildStage(BuildContext context) {
     switch (_stage) {
       case _Stage.preparing:
@@ -2322,35 +2896,36 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const _PromptTitle('Choose Voice'),
-              const SizedBox(height: 10),
+              const _PromptTitle('Choose Your Voice'),
               const SizedBox(height: 10),
               const Text(
-                'Select a voice from model_ex2_rich_kate.dm before the demo starts.',
+                'Clone a new voice, select one of your cloned voices, or select a built-in voice before the demo starts.',
                 textAlign: TextAlign.center,
                 style: _Styles.body,
               ),
               const SizedBox(height: 18),
-              _OptionLabel('Voice'),
-              // Two per row, like the RN example's voice grid.
-              LayoutBuilder(
-                builder: (context, constraints) => Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    for (final voice in _VoiceChoice.values)
-                      SizedBox(
-                        width: (constraints.maxWidth - 10) / 2,
-                        child: _ChoiceButton(
-                          label: voice.label,
-                          selected: _voiceChoice == voice,
-                          onPressed: _isBusy ? null : () => setState(() => _voiceChoice = voice),
-                        ),
-                      ),
-                  ],
-                ),
+              FilledButton(
+                style: _buttonStyle(_cloneNewVoiceColor),
+                onPressed: _isBusy ? null : () => unawaited(_openVoiceCloneScreen()),
+                child: const Text('Clone a new Voice'),
               ),
+              const SizedBox(height: 18),
+              _OptionLabel('Cloned Voices'),
+              if (_clonedVoices.isNotEmpty)
+                _voiceGrid(_clonedVoices)
+              else
+                const Text('No cloned voices yet.', style: _Styles.small),
+              if (_clonedVoices.contains(_voiceChoice)) ...[
+                const SizedBox(height: 10),
+                FilledButton(
+                  style: _buttonStyle(_cloneDeleteColor),
+                  onPressed: _isBusy ? null : () => unawaited(_confirmDeleteClonedVoice(_voiceChoice)),
+                  child: Text('Delete "$_voiceChoice"'),
+                ),
+              ],
+              const SizedBox(height: 18),
+              _OptionLabel('Built-in Voices'),
+              _voiceGrid(_builtInVoices),
               const SizedBox(height: 18),
               _PrimaryButton(
                 label: _isBusy ? 'Preparing...' : 'Continue',
@@ -2359,6 +2934,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
             ],
           ),
         );
+      case _Stage.voiceClone:
+        return _buildVoiceCloneScreen();
       case _Stage.svPrompt:
         final hasSavedEnrollment = _savedEnrollmentJsonPath != null;
         return _PromptShell(
@@ -2561,15 +3138,17 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
 }
 
 class _PromptShell extends StatelessWidget {
-  const _PromptShell({required this.child, required this.message});
+  const _PromptShell({required this.child, required this.message, this.scrollController});
 
   final Widget child;
   final String message;
+  final ScrollController? scrollController;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox.expand(
       child: SingleChildScrollView(
+        controller: scrollController,
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.fromLTRB(24, 14, 24, 32),
         child: Column(

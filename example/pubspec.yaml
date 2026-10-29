@@ -19,7 +19,7 @@ dependencies:
   flutter:
     sdk: flutter
 
-  flutter_davoice: ^0.0.13
+  flutter_davoice: ^0.0.14
   flutter_wake_word: ^0.0.54
   flutter_davoice_llm: ^0.0.7  # on-device LLM + agent for Local AI Chat
 
@@ -60,6 +60,8 @@ flutter:
     # Only the models the app loads (like the RN example's require()s): the
     # folder also holds older models that would add hundreds of MB to the app.
     - assets/models/model_ex2_rich_kate.dm
+    # Voice cloning's voice encoder (lib/voice_clone/voice_clone.dart).
+    - assets/models/embedder_en.dm
     - assets/models/hey_coach_model_28_22012026b.dm
     - assets/models/sv.dm
     - assets/stt_bias_conf/
