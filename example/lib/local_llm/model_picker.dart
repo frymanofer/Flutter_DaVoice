@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../text_field_menu.dart';
 import 'chat_template.dart';
 import 'model_config.dart';
 import 'model_store.dart';
@@ -292,6 +293,7 @@ class _LocalLlmModelPickerState extends State<LocalLlmModelPicker> {
         child: TextField(
           controller: controller,
           keyboardType: type,
+          contextMenuBuilder: textFieldContextMenu,
           autocorrect: false,
           decoration: InputDecoration(labelText: label, hintText: hint),
         ),

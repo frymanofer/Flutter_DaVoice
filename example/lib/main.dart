@@ -10,6 +10,7 @@ import 'flow/startup_narration.dart';
 import 'flow/transcript.dart';
 import 'local_llm/local_llm_service.dart';
 import 'local_llm/model_picker.dart';
+import 'text_field_menu.dart';
 import 'voice_clone/voice_clone.dart';
 
 import 'package:flutter/material.dart';
@@ -2609,6 +2610,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           _OptionLabel('Voice Name'),
           TextField(
             controller: _cloneNameController,
+            contextMenuBuilder: textFieldContextMenu,
             enabled: !_cloneBusy,
             style: const TextStyle(color: _rnText, fontSize: 16),
             decoration: const InputDecoration(hintText: 'For example: Dana'),
@@ -2880,6 +2882,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
               if (_setupFailed && !_isBusy) ...[
                 TextField(
                   controller: _licenseController,
+                  contextMenuBuilder: textFieldContextMenu,
                   decoration: InputDecoration(
                     labelText: 'Davoice license key',
                     helperText: _licenseSource,
@@ -3327,6 +3330,7 @@ class _TtsTestScreen extends StatelessWidget {
           TextField(
             controller: controller,
             minLines: 5,
+            contextMenuBuilder: textFieldContextMenu,
             maxLines: 10,
             decoration: const InputDecoration(
               hintText: 'Write text to speak...',
