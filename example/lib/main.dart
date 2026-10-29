@@ -1455,22 +1455,20 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       var shown = '';
       late void Function(String) speakSentence;
       speakSentence = (String sentence) {
-        final startsAfter = spoken;
+        // Straight to the speech queue: it prepares the next sentences while
+        // this one plays. `spoken` completes when everything queued is spoken.
         spoken = _speech.speak(
           _applyTtsTextPolicy(normalizeTextForSpeech(sentence)),
           speakerId: _speakerId,
           speed: _speakerSpeed,
         );
-        // Show each sentence when its turn to be spoken comes, so the text
-        // never runs ahead of the voice.
-        unawaited(startsAfter.catchError((_) {}).then((_) {
-          if (!mounted || !_isSpeechUiEpochCurrent(epoch)) return;
-          shown = shown.isEmpty ? sentence : '$shown $sentence';
-          setState(() {
-            _aiChatResponse = shown;
-            _currentSpeechSentence = 'Local AI: $sentence';
-          });
-        }));
+        // Show the reply as it is generated, sentence by sentence.
+        if (!mounted) return;
+        shown = shown.isEmpty ? sentence : '$shown $sentence';
+        setState(() {
+          _aiChatResponse = shown;
+          _currentSpeechSentence = 'Local AI: $sentence';
+        });
       };
 
       _localGenerationActive = true;
@@ -1485,7 +1483,10 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           final split = splitCompletedSentences(pendingSentence + delta);
           pendingSentence = split.remainder;
           split.completed.forEach(speakSentence);
-          setState(() => _message = 'Streaming local AI reply...');
+          // Once per reply, not on every token: a rebuild per token slows the UI.
+          if (_message != 'Streaming local AI reply...') {
+            setState(() => _message = 'Streaming local AI reply...');
+          }
         }, onEvent: (event) {
           if (!_isSpeechUiEpochCurrent(epoch)) return;
           if (event.type == 'filler') {
