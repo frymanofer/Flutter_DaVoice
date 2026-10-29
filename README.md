@@ -1,5 +1,7 @@
 # Flutter DaVoice Example App
 
+[License](LICENSE) · [Model and Voice Asset Notice](MODEL_NOTICES.md)
+
 Standalone Flutter example app for the DaVoice voice stack.
 
 DaVoice product pages:
