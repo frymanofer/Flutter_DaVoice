@@ -20,7 +20,7 @@ dependencies:
     sdk: flutter
 
   flutter_davoice: ^0.0.17
-  flutter_wake_word: ^0.0.54
+  flutter_wake_word: ^0.0.55
   flutter_davoice_llm: ^0.0.8  # on-device LLM + agent for Local AI Chat
 
   path_provider: ^2.1.5

@@ -49,7 +49,7 @@ SPEC CHECKSUMS:
   Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
   flutter_davoice: 6ac6c209dbcb5346644249d38effc3a519f080f0
   flutter_davoice_llm: fa15bf7434b033108e7a8d39632ddf83335b9b90
-  flutter_wake_word: 42f07fbf0774a86fd8a821fd2915a68f0676c6af
+  flutter_wake_word: dc09f1b6a3f91d6fa135f454f07f3e23b367e83c
   ios_microphone_permission: 7d975ad9996d44c677d44c188dc69db9bf5badf3
   onnxruntime-c: 07cfff40dda7e1c54a4350bb2ad226c63150fce3
   onnxruntime-objc: b22c5d4517e9804e47c66f1f122ec4a6aa923f86
