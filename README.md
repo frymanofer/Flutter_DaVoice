@@ -266,7 +266,7 @@ The example already includes model assets referenced by the app:
 
 - Davoice TTS voice: `assets/models/model_ex_ariana_fast.dm`
 - Davoice TTS voice: `assets/models/model_ex_rich_fast.dm`
-- speaker verification model: `assets/models/speaker_model.dm`
+- speaker verification model: `assets/models/sv.dm`
 - wake word model: `assets/models/hey_coach_model_28_22012026b.onnx`
 
 The app currently uses the `Hey Coach` wake word model and saves speaker verification enrollment data to the app documents directory as `sv_enrollment.json`.
