@@ -41,6 +41,7 @@ const _svMatchHold = Duration(milliseconds: 750);
 const _richSpeakerSpeed = 0.95; // RICH_SPEAKER_SPEED_NEW_MODEL
 const _sharedModelSpeakerSpeed = 1.0; // KATE / ARIANA / HANNA_SPEAKER_SPEED_NEW_MODEL
 const _clonedVoiceSpeed = 1.0; // CLONED_VOICE_SPEED
+
 const _wakewordInstanceId = 'multi_model_instance';
 const _wakewordThreshold = 0.999;
 const _wakewordBufferCount = 3;
