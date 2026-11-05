@@ -121,3 +121,16 @@ final agent = await DavoiceAgent.create(
 
 Which questions trigger a search is set in `assets/agent/agent.json` (`webSearch.rules`).
 
+## Speaker verification onboarding
+
+To get the best results of Speaker Verification signature please use the following in your onboarding:
+
+> [Wake Word], Please send a message to my friend. How's the weather going to be today? Please set a timer for three minutes. Can you play some music for me?
+
+And if you want to make it even stronger add:
+
+> Every morning, I enjoy a fresh cup of coffee while watching the beautiful sunrise.
+
+For example - the following is a perfect onboarding:
+
+> "Hey Coach, Please send a message to my friend. How's the weather going to be today? Please set a timer for three minutes. Can you play some music for me? Every morning, I enjoy a fresh cup of coffee while watching the beautiful sunrise."

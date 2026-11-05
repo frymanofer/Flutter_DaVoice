@@ -11,6 +11,7 @@ import 'flow/transcript.dart';
 import 'local_llm/local_llm_service.dart';
 import 'local_llm/model_picker.dart';
 import 'text_field_menu.dart';
+import 'tts/voice_styles.dart';
 import 'voice_clone/voice_clone.dart';
 
 import 'package:flutter/material.dart';
@@ -234,6 +235,11 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   // Voice cloning (lib/voice_clone/voice_clone.dart): the cloned voices found
   // in the cloned voices folder, and the "Clone a new Voice" screen.
   List<String> _clonedVoices = const [];
+  // Emotion / style variants of each built-in voice (lib/tts/voice_styles.dart);
+  // voices without any are not listed.
+  Map<String, List<String>> _voiceAbilities = const {};
+  bool _showStyleExamples = false;
+  String? _playingStyleExample;
   String _clonedVoicesFolder = '';
   final _cloneNameController = TextEditingController();
   bool _cloneUseMicrophone = true;
@@ -1011,6 +1017,10 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       return;
     }
     _loadedTtsModel = _selectedTtsModel;
+    final abilities = await loadVoiceAbilities(_speech, await _speech.getAllVoices());
+    if (!mounted) return;
+    _log('Voices with emotions / styles: $abilities');
+    setState(() => _voiceAbilities = abilities);
     // Cloned voices: a (re)load forgets the folder, so set it again.
     final clonedVoices = await loadClonedVoices(_speech);
     if (!mounted) return;
@@ -1711,7 +1721,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         jsonEncode({
           'system_instruction': {
             'parts': [
-              {'text': _geminiSystemPrompt},
+              {'text': '$_geminiSystemPrompt $llmReplyInstruction'},
             ],
           },
           'contents': nextHistory,
@@ -2185,6 +2195,84 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       throw StateError('Could not select the $voice voice.');
     }
     _appliedTtsVoice = voice;
+  }
+
+  // Plays an emotion / style example with its voice (the voice picked with
+  // Continue is selected again before the narrator next speaks).
+  Future<void> _playStyleExample(String voice, String text) async {
+    if (_loadedTtsModel == null) return;
+    setState(() => _playingStyleExample = text);
+    try {
+      _appliedTtsVoice = null;
+      await _speech.stopSpeaking();
+      await _speech.changeVoice(voice);
+      await _speech.speak(_applyTtsTextPolicy(text), speed: _speedFor(voice));
+    } catch (error) {
+      _log('Style example failed: $error');
+    } finally {
+      if (mounted && _playingStyleExample == text) setState(() => _playingStyleExample = null);
+    }
+  }
+
+  // The expandable list of emotion / style examples of [voice]; tapping one
+  // calls [onPick] with its text.
+  Widget _styleExamples(String voice, void Function(String text) onPick, String pickHint) {
+    final examples = voiceStyleExamples(_voiceAbilities[voice] ?? const [], 'en');
+    if (examples.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0x14ffffff),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: () => setState(() => _showStyleExamples = !_showStyleExamples),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "${_showStyleExamples ? '▾' : '▸'} $voice's emotions & styles (${examples.length})",
+                  style: _Styles.bodyStrong,
+                ),
+                Text(_showStyleExamples ? pickHint : 'Tap to see examples', style: _Styles.small),
+              ],
+            ),
+          ),
+          if (_showStyleExamples) ...[
+            for (final example in examples)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () => onPick(example.text),
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: _playingStyleExample == example.text ? const Color(0xff34c759) : const Color(0x1affffff),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0x2effffff)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(example.label, style: _Styles.bodyStrong),
+                        const SizedBox(height: 3),
+                        Text(example.text, style: _Styles.small),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 8),
+            Text(styleTagHint['en']!, style: _Styles.small),
+          ],
+        ],
+      ),
+    );
   }
 
   // ---- Voice cloning screen ----
@@ -2896,6 +2984,10 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           ),
         );
       case _Stage.voicePicker:
+        final emotionVoices = _builtInVoices.where(_voiceAbilities.containsKey).toList();
+        final examplesVoice = _voiceAbilities.containsKey(_voiceChoice)
+            ? _voiceChoice
+            : emotionVoices.firstOrNull;
         return _PromptShell(
           message: _isBusy ? 'Preparing your voice...' : _message,
           child: Column(
@@ -2904,7 +2996,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
               const _PromptTitle('Choose Your Voice'),
               const SizedBox(height: 10),
               const Text(
-                'Clone a new voice, select one of your cloned voices, or select a built-in voice before the demo starts.',
+                'Clone a new voice, or select a voice with emotions, a built-in voice, or one of your cloned voices before the demo starts.',
                 textAlign: TextAlign.center,
                 style: _Styles.body,
               ),
@@ -2914,6 +3006,20 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
                 onPressed: _isBusy ? null : () => unawaited(_openVoiceCloneScreen()),
                 child: const Text('Clone a new Voice'),
               ),
+              const SizedBox(height: 18),
+              if (emotionVoices.isNotEmpty) ...[
+                const _HighlightLabel('Voices with Emotions & Styles in Free Text'),
+                _voiceGrid(emotionVoices),
+                if (examplesVoice != null)
+                  _styleExamples(
+                    examplesVoice,
+                    (text) => unawaited(_playStyleExample(examplesVoice, text)),
+                    'Tap an example to hear it',
+                  ),
+                const SizedBox(height: 18),
+              ],
+              _OptionLabel(emotionVoices.isNotEmpty ? 'Other Built-in Voices' : 'Built-in Voices'),
+              _voiceGrid(_builtInVoices.where((voice) => !_voiceAbilities.containsKey(voice)).toList()),
               const SizedBox(height: 18),
               _OptionLabel('Cloned Voices'),
               if (_clonedVoices.isNotEmpty)
@@ -2928,9 +3034,6 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
                   child: Text('Delete "$_voiceChoice"'),
                 ),
               ],
-              const SizedBox(height: 18),
-              _OptionLabel('Built-in Voices'),
-              _voiceGrid(_builtInVoices),
               const SizedBox(height: 18),
               _PrimaryButton(
                 label: _isBusy ? 'Preparing...' : 'Continue',
@@ -3118,6 +3221,11 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           onSpeak: () => _speakManualText(),
           onBack: () => unawaited(_goBackToModeSelection()),
           onClear: _ttsController.clear,
+          styleExamples: _styleExamples(
+            _voiceName,
+            (text) => setState(() => _ttsController.text = text),
+            'Tap an example to put it in the text box',
+          ),
         );
       case _Stage.home:
         return _HomeScreen(
@@ -3309,6 +3417,7 @@ class _TtsTestScreen extends StatelessWidget {
     required this.onSpeak,
     required this.onBack,
     required this.onClear,
+    required this.styleExamples,
   });
 
   final String voiceName;
@@ -3317,6 +3426,8 @@ class _TtsTestScreen extends StatelessWidget {
   final VoidCallback onSpeak;
   final VoidCallback onBack;
   final VoidCallback onClear;
+  // The voice's emotion / style examples (empty for voices without any).
+  final Widget styleExamples;
 
   @override
   Widget build(BuildContext context) {
@@ -3338,6 +3449,7 @@ class _TtsTestScreen extends StatelessWidget {
               hintText: 'Write text to speak...',
             ),
           ),
+          styleExamples,
           const SizedBox(height: 16),
           _PrimaryButton(
             label: isSpeaking ? 'Speaking...' : 'Speak',
@@ -3418,6 +3530,35 @@ class _OptionLabel extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(text, style: _Styles.label),
+    );
+  }
+}
+
+// The highlighted headline of the voices with emotions.
+class _HighlightLabel extends StatelessWidget {
+  const _HighlightLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0x1fffd60a),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0x99ffd60a)),
+          ),
+          child: Text(
+            text,
+            textAlign: TextAlign.center,
+            style: _Styles.label.copyWith(color: const Color(0xffffd60a), fontSize: 15),
+          ),
+        ),
+      ),
     );
   }
 }

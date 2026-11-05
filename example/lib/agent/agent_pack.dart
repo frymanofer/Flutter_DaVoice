@@ -44,4 +44,18 @@ class AgentPack {
   List<String> get onlineToolFillers => strings(agent['onlineToolFillers']);
 }
 
+/// The system-prompt line that sets the AI chats' reply language (the RN
+/// example's llmReplyInstruction; this app is English only).
+const llmReplyInstruction = 'The user speaks English. Always reply in English.';
+
+/// agent.json with [llmReplyInstruction] ending the persona, so it is part of
+/// the cached system prompt and the same in every turn and prefill.
+Json agentWithReplyLanguage(Json agent) => {
+      ...agent,
+      'persona': {
+        ...agent['persona'] as Json,
+        'systemPrompt': '${(agent['persona'] as Json)['systemPrompt']} $llmReplyInstruction'.trim(),
+      },
+    };
+
 List<String> strings(Object? list) => [for (final item in list as List) item as String];

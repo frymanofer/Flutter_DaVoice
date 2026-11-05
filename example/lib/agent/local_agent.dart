@@ -90,7 +90,7 @@ class LocalAgent {
           final dir = await getApplicationSupportDirectory();
           final agent = await DavoiceAgent.create({
             'pack': {
-              'agent': agentPack.agent,
+              'agent': agentWithReplyLanguage(agentPack.agent),
               'skills': [
                 {
                   'skill': agentPack.caloriesSkill,
