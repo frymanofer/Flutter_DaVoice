@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_davoice_example/local_llm/chat_template.dart';
+import 'package:flutter_davoice_example/local_llm/demo.dart';
 import 'package:flutter_davoice_example/local_llm/local_llm_service.dart';
 import 'package:flutter_davoice_example/local_llm/model_config.dart';
 import 'package:flutter_davoice_example/local_llm/model_store.dart';
@@ -66,11 +67,28 @@ class FakeLlm extends FlutterDavoiceLlmPlatform with MockPlatformInterfaceMixin 
       }
     }
     scheduleMicrotask(() => agentEvents$.add(jsonEncode({'type': 'end', 'callId': callId})));
+    if (method == 'prompt') return jsonEncode('<|im_start|>system\nYou are the agent.<|im_end|>\n<|im_start|>user\nHello');
     return method == 'turn' ? jsonEncode({'text': script.join(), 'toolMessages': [], 'cancelled': false}) : 'null';
   }
 
   @override
   Future<void> agentClose() async {}
+
+  // The warm-up's saved prompt state (KV cache file).
+  final savedStates = <String>[];
+  final loadedStates = <String>[];
+  @override
+  Future<int> saveState(String path) async {
+    savedStates.add(path);
+    await File(path).writeAsString('state');
+    return 100;
+  }
+
+  @override
+  Future<int> loadState(String path) async {
+    loadedStates.add(path);
+    return 100;
+  }
 }
 
 void main() {
@@ -93,8 +111,8 @@ void main() {
 
     tearDown(() => dir.delete(recursive: true));
 
-    test('defaults to Qwen2.5 1.5B and persists selection and custom models', () async {
-      expect((await store.selectedModel()).id, localLlmDefaultModelId);
+    test("defaults to the demo's model and persists selection and custom models", () async {
+      expect((await store.selectedModel()).id, localLlmDemoDefaultModel[currentLocalDemo]);
       final custom = await store.addCustomModel(
         displayName: 'My Llama',
         url: 'https://example.com/m.gguf',
@@ -110,7 +128,7 @@ void main() {
       expect(findMatchingPreset(selected.chatTemplate)?.id, 'llama3');
 
       await reopened.removeCustomModel(custom.id);
-      expect((await reopened.selectedModel()).id, localLlmDefaultModelId);
+      expect((await reopened.selectedModel()).id, localLlmDemoDefaultModel[currentLocalDemo]);
     });
 
     test('rejects invalid custom models', () async {
@@ -133,7 +151,8 @@ void main() {
 
     setUp(() async {
       dir = await Directory.systemTemp.createTemp('local_llm_service');
-      final store = LocalLlmModelStore(baseDirectory: () async => dir);
+      // No network in tests: a pre-warmed state is only used when a test puts one on disk.
+      final store = LocalLlmModelStore(baseDirectory: () async => dir, downloadPrebuiltStates: false);
       // Pretend the default model is downloaded.
       final file = File(await store.modelPath(await store.selectedModel()));
       await file.parent.create(recursive: true);
@@ -150,7 +169,7 @@ void main() {
 
     tearDown(() => dir.delete(recursive: true));
 
-    test('concurrent warm-ups load the model once, then set the template and prefill', () async {
+    test('concurrent warm-ups load the model once, then set the template and warm the real prompt', () async {
       platform.loadGate = Completer<void>();
       final a = service.warmUp();
       final b = service.warmUp();
@@ -158,10 +177,38 @@ void main() {
       await Future.wait([a, b]);
       await pumpEventQueue();
       expect(platform.loads, 1);
-      expect(service.isModelReady(localLlmDefaultModelId), isTrue);
+      final model = await service.store.selectedModel();
+      expect(model.id, localLlmDemoDefaultModel[currentLocalDemo]);
+      expect(service.isModelReady(model.id), isTrue);
       expect(platform.agentCalls.first, startsWith('configure {"chatTemplate":{"systemPrefix":"<|im_start|>system'));
-      expect(platform.agentCalls.where((c) => c.startsWith('configure')).length, 1);
-      expect(platform.agentCalls, contains('prefill {"history":[],"text":""}'));
+      // The agent's own prompt is answered briefly (system prompt into the cache), then saved for the next start.
+      expect(platform.agentCalls.where((c) => c.startsWith('prompt ')), isNotEmpty);
+      expect(platform.prompts, contains(startsWith('<|im_start|>system')));
+      expect(platform.savedStates, isNotEmpty);
+    });
+
+    test('a later start restores the saved prompt state instead of saving it again', () async {
+      await service.warmUp();
+      final saved = platform.savedStates.length;
+      final again = LocalLlmService(
+        licenseKey: () => 'ok',
+        llm: FlutterDavoiceLlm(platform: platform),
+        store: service.store,
+        agent: () => DavoiceAgent.create({'pack': {}}, platform: platform),
+      );
+      await again.warmUp();
+      expect(platform.loadedStates, isNotEmpty);
+      expect(platform.savedStates.length, saved);
+    });
+
+    test("a model's pre-warmed state is restored on the first start and not saved again", () async {
+      final model = await service.store.selectedModel();
+      expect(model.prebuiltStates, isNotEmpty, reason: "the car demo's model (r4b) ships pre-warmed states");
+      final prebuilt = File(await service.store.prebuiltStatePath(model, 'en'));
+      await prebuilt.writeAsString('state');
+      await service.warmUp();
+      expect(platform.loadedStates, [prebuilt.path]);
+      expect(platform.savedStates, isEmpty);
     });
 
     test('prefill is skipped until the model is ready', () async {

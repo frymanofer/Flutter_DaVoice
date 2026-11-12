@@ -19,10 +19,11 @@ dependencies:
   flutter:
     sdk: flutter
 
-  flutter_davoice: ^0.0.17
+  flutter_davoice: ^0.0.19
   flutter_wake_word: ^0.0.55
-  flutter_davoice_llm: ^0.0.8  # on-device LLM + agent for Local AI Chat
+  flutter_davoice_llm: ^0.0.12  # on-device LLM + agent for Local AI Chat
 
+  crypto: ^3.0.6  # model download checksums
   path_provider: ^2.1.5
   permission_handler: ^12.0.1
 
@@ -57,17 +58,28 @@ flutter:
     - assets/bellServiceDeskPressXThree.mp3
     - assets/cashRegisterSound.mp3
     - assets/images/logo.jpeg
-    # Only the models the app loads (like the RN example's require()s): the
-    # folder also holds older models that would add hundreds of MB to the app.
+    # Which languages' voices are built in and which are downloaded (lib/tts/language_packs.dart).
+    - assets/language_packs.json
+    # Only the models the app loads: the built-in languages of assets/language_packs.json ("bundled": English and pt-BR),
+    # the wake word and speaker verification. The other languages are downloaded; test/language_packs_test.dart checks this list.
     - assets/models/model_ex2_rich_kate.dm
-    # Voice cloning's voice encoder (lib/voice_clone/voice_clone.dart).
+    - assets/models/model_ex2_portuguese_brv1.dm
+    # Voice cloning's voice encoders, per language (lib/voice_clone/voice_clone.dart).
     - assets/models/embedder_en.dm
+    - assets/models/embedder_brv1.dm
     - assets/models/hey_coach_model_28_22012026b.dm
     - assets/models/sv.dm
     - assets/stt_bias_conf/
     # Local AI Chat's agent pack (same files as the RN example's agent/).
+    # Flutter asset folders are not recursive: every pack folder is listed (English, pt-BR, and the car demo's automotive pack).
     - assets/agent/
     - assets/agent/skills/calories/
+    - assets/agent/pt-BR/
+    - assets/agent/pt-BR/skills/calories/
+    - assets/agent_automotive/
+    - assets/agent_automotive/pt-BR/
+    # The simulated car's tool definitions (the same files as the RN example's src/car/*.json).
+    - assets/car/
 
   # To add custom fonts to your application, add a fonts section here,
   # in this "flutter" section. Each entry in this list should have a

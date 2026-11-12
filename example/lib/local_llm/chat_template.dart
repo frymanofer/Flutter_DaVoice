@@ -13,6 +13,8 @@ class ChatTemplate {
     required this.turnSuffix,
     required this.mergeSystemIntoFirstUser,
     required this.stopSequences,
+    this.generationPrefix = '',
+    this.spacedToolJson = false,
   });
 
   factory ChatTemplate.fromJson(Map<String, dynamic> json) {
@@ -25,6 +27,8 @@ class ChatTemplate {
       stopSequences: [
         for (final stop in json['stopSequences'] as List? ?? const []) stop.toString(),
       ],
+      generationPrefix: json['generationPrefix'] as String? ?? '',
+      spacedToolJson: json['spacedToolJson'] as bool? ?? false,
     );
   }
 
@@ -43,6 +47,13 @@ class ChatTemplate {
   /// metadata doesn't mark the turn-end marker as end-of-generation.
   final List<String> stopSequences;
 
+  /// Opens the reply being generated (not earlier replies), e.g. Qwen3's
+  /// empty `<think>\n\n</think>\n\n`: thinking off, as its own template does.
+  final String generationPrefix;
+
+  /// Tool calls as JSON with spaces after ':' and ',' (Qwen3's own template).
+  final bool spacedToolJson;
+
   Map<String, dynamic> toJson() => {
         'systemPrefix': systemPrefix,
         'userPrefix': userPrefix,
@@ -50,6 +61,8 @@ class ChatTemplate {
         'turnSuffix': turnSuffix,
         'systemMode': mergeSystemIntoFirstUser ? 'merge-into-first-user' : 'role',
         'stopSequences': stopSequences,
+        if (generationPrefix.isNotEmpty) 'generationPrefix': generationPrefix,
+        if (spacedToolJson) 'spacedToolJson': true,
       };
 
   bool sameAs(ChatTemplate other) =>
@@ -58,7 +71,9 @@ class ChatTemplate {
       assistantPrefix == other.assistantPrefix &&
       turnSuffix == other.turnSuffix &&
       mergeSystemIntoFirstUser == other.mergeSystemIntoFirstUser &&
-      stopSequences.join('\u0000') == other.stopSequences.join('\u0000');
+      stopSequences.join('\u0000') == other.stopSequences.join('\u0000') &&
+      generationPrefix == other.generationPrefix &&
+      spacedToolJson == other.spacedToolJson;
 }
 
 /// A named template family users pick from when adding a model.
@@ -90,7 +105,7 @@ const chatTemplatePresets = [
   ChatTemplatePreset(
     'chatml',
     'ChatML',
-    'Qwen 2 / 2.5 / 3, SmolLM2, Hermes',
+    'Qwen 2 / 2.5, SmolLM2, Hermes',
     ChatTemplate(
       systemPrefix: '<|im_start|>system\n',
       userPrefix: '<|im_start|>user\n',
@@ -98,6 +113,23 @@ const chatTemplatePresets = [
       turnSuffix: '<|im_end|>\n',
       mergeSystemIntoFirstUser: false,
       stopSequences: ['<|im_end|>'],
+    ),
+  ),
+  // ChatML with thinking off, as Qwen3's own template renders it
+  // (enable_thinking false): the reply opens with an empty think block.
+  ChatTemplatePreset(
+    'qwen3',
+    'Qwen3',
+    'Qwen3, DaVoice Agent',
+    ChatTemplate(
+      systemPrefix: '<|im_start|>system\n',
+      userPrefix: '<|im_start|>user\n',
+      assistantPrefix: '<|im_start|>assistant\n',
+      turnSuffix: '<|im_end|>\n',
+      mergeSystemIntoFirstUser: false,
+      stopSequences: ['<|im_end|>'],
+      generationPrefix: '<think>\n\n</think>\n\n',
+      spacedToolJson: true,
     ),
   ),
   ChatTemplatePreset(

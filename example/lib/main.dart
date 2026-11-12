@@ -4,13 +4,23 @@ import 'dart:io';
 
 import 'agent/agent_pack.dart';
 import 'agent/local_agent.dart';
+import 'agent/remote_assistant.dart';
 import 'calories/calorie_log.dart';
 import 'calories/calories_card.dart';
+import 'car/car_card.dart';
+import 'car/car_tools.dart';
+import 'flow/app_language.dart';
+import 'flow/fragments.dart';
+import 'local_llm/demo.dart';
+import 'speaker_verification/current_speaker.dart';
+import 'flow/narration.dart';
 import 'flow/startup_narration.dart';
 import 'flow/transcript.dart';
 import 'local_llm/local_llm_service.dart';
+import 'local_llm/model_config.dart';
 import 'local_llm/model_picker.dart';
 import 'text_field_menu.dart';
+import 'tts/language_packs.dart';
 import 'tts/voice_styles.dart';
 import 'voice_clone/voice_clone.dart';
 
@@ -26,14 +36,19 @@ import 'package:permission_handler/permission_handler.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Local AI Chat's behavior and data (assets/agent/), used synchronously later.
-  await loadAgentPack();
+  await loadAgentPacks();
+  await loadCarToolDefinitions();
+  // Which languages' voices are built in and which are downloaded (assets/language_packs.json).
+  await loadLanguagePacks();
   runApp(const DavoiceExampleApp());
 }
 
 const _speakerId = 0;
 // Id of the app's single enrolled speaker (live speaker-verification API).
 const _svSpeakerId = 'user';
-const _sharedTtsModel = 'assets/models/model_ex2_rich_kate.dm';
+// The TTS model per app language: built in or a downloaded language pack (lib/tts/language_packs.dart, as the RN example's
+// src/tts/index.ts languageFile); every voice is a speaker of it.
+const _brazilianSpeakerSpeed = 1.0; // BRAZILIAN_SPEAKER_SPEED
 const _svOnboardingSampleCount = 5;
 const _androidSvUiMatchThreshold = 0.34;
 final _svDecisionThreshold = Platform.isAndroid ? 0.34 : 0.35;
@@ -47,7 +62,6 @@ const _wakewordInstanceId = 'multi_model_instance';
 const _wakewordThreshold = 0.999;
 const _wakewordBufferCount = 3;
 const _wakewordMsBetweenCallbacks = 1000;
-const _locale = 'en-US';
 const _speechSilenceTimeout = Duration(milliseconds: 2000);
 const _geminiModel = 'gemini-3.1-flash-lite-preview';
 const _geminiSystemPrompt =
@@ -135,15 +149,16 @@ const _defaultAudioRoutingConfig = AudioRoutingConfig(
   wakeWordDuringTTS: WakeWordDuringTTSConfig(threshold: 0.9, bufferCount: 1),
 );
 
-/// The RN example's TTS_VOICE_OPTIONS: the built-in voices, in the same order.
-/// Every voice is a speaker of the shared model (model_ex2_rich_kate.dm), and
-/// so is every cloned voice (lib/voice_clone/voice_clone.dart).
-const _builtInVoices = ['Ariana', 'Rich', 'Hanna', 'Kate', 'Jenny', 'Matthew', 'Gloria'];
+/// The English model's built-in voices, until the loaded model lists its own (speech.getAllVoices, like the RN example).
+/// Every voice is a speaker of the language's model, and so is every cloned voice (lib/voice_clone/voice_clone.dart).
+const _englishVoices = ['Ariana', 'Rich', 'Hanna', 'Kate', 'Jenny', 'Matthew', 'Gloria'];
 const _defaultVoice = 'Rich';
 
 enum _AppModeChoice { localAiChat, fullAiChat, combined, sttOnly, typeToTts }
 
 enum _Stage {
+  language,
+  languageDownload,
   preparing,
   voicePicker,
   voiceClone,
@@ -227,7 +242,10 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   Timer? _svElapsedTimer;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
 
-  _Stage _stage = _Stage.preparing;
+  // First of all: the language (it picks the TTS model, the voice-cloning encoder and the STT locale).
+  _Stage _stage = _Stage.language;
+  // The loaded model's built-in voices.
+  List<String> _builtInVoices = _englishVoices;
   final _narration = StartupNarration();
   String? _loadedTtsModel;
   // A built-in voice or the name of a cloned voice.
@@ -313,9 +331,15 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   String? _mcpServerUrl;
   String? _mcpServerToken;
   Future<void>? _mcpToolsLoaded;
+  List<ToolDefinition> _mcpTools = const [];
   String _localModelName = '';
   String _localModelStatus = '';
   int _localModelWarmUpSeq = 0;
+  // The Local AI Chat demo ('car' / 'calories') and the loading screen's stage timer (download / load / warm-up).
+  String _localDemo = currentLocalDemo;
+  String _loadingStage = 'load';
+  DateTime _loadingStageStartedAt = DateTime.now();
+  Timer? _loadingTicker;
   bool _localGenerationActive = false;
 
   bool get _isLocalAIChat => _appModeChoice == _AppModeChoice.localAiChat;
@@ -323,15 +347,17 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_startDemo());
-    });
     _loadGeminiApiKey();
     _listenToSpeechEvents();
+    unawaited(_refreshReadyPacks());
+    unawaited(_localLlm.store.demo().then((demo) {
+      if (mounted) setState(() => _localDemo = demo);
+    }));
   }
 
   @override
   void dispose() {
+    _loadingTicker?.cancel();
     _beginSpeechUiEpoch();
     for (final subscription in _subscriptions) {
       subscription.cancel();
@@ -388,6 +414,10 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       _mcpServerUrl = value('MCP_SERVER_URL');
       _mcpServerToken = value('MCP_SERVER_TOKEN');
       final key = value('GEMINI_API_KEY');
+      if (key != null && key.isNotEmpty) {
+        // Local AI Chat's remote assistant uses AI Chat's Gemini settings.
+        RemoteAssistant.configure(apiKey: key, model: _geminiModel, systemPrompt: _geminiSystemPrompt);
+      }
       if (!mounted || key == null || key.isEmpty) return;
       setState(() => _geminiApiKey = key);
     } catch (error) {
@@ -412,6 +442,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         if (!mounted) return;
       }),
       _speech.onSpeechPartialResults.listen((event) {
+        noteSpeechResult(event.speakerIds, event.speakerId);
         if (!_speechResultsAllowed) return;
         final current = event.value.isEmpty ? '' : event.value.first.trim();
         if (current.isEmpty) return;
@@ -462,6 +493,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         });
       }),
       _speech.onSpeechResults.listen((event) {
+        noteSpeechResult(event.speakerIds, event.speakerId);
         if (!_speechResultsAllowed) return;
         final transcript = event.value.isEmpty ? '' : event.value.first.trim();
         if (transcript.isEmpty) return;
@@ -535,13 +567,10 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       if (!mounted) return;
       await _initializeSpeechAndWakeWord(null);
       if (!mounted) return;
-      final cloningChoices = _clonedVoices.isNotEmpty
-          ? 'You can either clone a new voice, select from your cloned voices, or select from the built-in voices.'
-          : 'You can either clone a new voice, or select from the built-in voices.';
+      final introduction = narration.introduction(_spokenVoiceName(_voiceName));
       await _speakStartupNarration([
-        'Hey there, My name is $_voiceName. In this application we will use my cloned voice in order to showcase our voice AI agent capabilities.',
-        "Don't worry. I will be your personal guide to walk you through this demonstration step by step.",
-        'First, please choose which voice you want to use. $cloningChoices',
+        ...introduction.take(introduction.length - 1),
+        '${introduction.last} ${narration.cloningChoices(_clonedVoices.isNotEmpty)}',
       ]);
       if (!mounted) return;
       setState(() {
@@ -600,8 +629,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       }
       await _applySelectedTtsVoice();
       await _speakStartupNarration([
-        'You selected $_voiceName.',
-        'The next phase, is setting speaker verification. You can create a new speaker signature, use a saved one, or skip this step.',
+        narration.selectedVoice(_spokenVoiceName(_voiceName)),
+        narration.speakerVerificationSetup,
       ]);
       await _loadSavedEnrollmentJson();
       if (!mounted) return;
@@ -1006,7 +1035,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     _appliedTtsVoice = null;
     await _speech.initAll(
       DavoiceInitAllOptions(
-        locale: _locale,
+        locale: appLanguageInfo(currentAppLanguage).sttLocale,
         model: _selectedTtsModel,
         onboardingJsonPath: enrollmentJsonPath,
         speakerId: _svSpeakerId,
@@ -1017,7 +1046,20 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       return;
     }
     _loadedTtsModel = _selectedTtsModel;
-    final abilities = await loadVoiceAbilities(_speech, await _speech.getAllVoices());
+    final availableVoices = await _speech.getAllVoices();
+    if (!mounted) return;
+    // The model's own voices (each language's model has its own); keep the selection when it is one of them.
+    setState(() {
+      _builtInVoices = availableVoices.isNotEmpty ? availableVoices : [_defaultVoice];
+      if (!_builtInVoices.contains(_voiceChoice) && !_clonedVoices.contains(_voiceChoice)) {
+        // A TTS v1 language's own voice first (RN defaultTTSVoiceForLanguage), else Rich.
+        final preferred = originalTtsVoices[currentAppLanguage] ?? _defaultVoice;
+        _voiceChoice = _builtInVoices.contains(preferred)
+            ? preferred
+            : _builtInVoices.contains(_defaultVoice) ? _defaultVoice : _builtInVoices.first;
+      }
+    });
+    final abilities = await loadVoiceAbilities(_speech, availableVoices);
     if (!mounted) return;
     _log('Voices with emotions / styles: $abilities');
     setState(() => _voiceAbilities = abilities);
@@ -1047,10 +1089,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       }
       if (!mounted) return;
       await _speakStartupNarration([
-        enrollment == null
-            ? 'Speaker verification skipped.'
-            : 'Speaker verification is ready!',
-        'Now please say the wake word Hey Coach to continue.',
+        enrollment == null ? narration.speakerVerificationSkipped : narration.speakerVerificationReady,
+        narration.sayWakeWord('Hey Coach'),
       ]);
       if (!mounted) return;
       setState(() {
@@ -1074,10 +1114,13 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       }
       final sttIds = await _speech.addSpeaker(_svSpeakerId, enrollmentJsonPath);
       _log('[SV] STT speakers: $sttIds');
+      // Owner-only car actions (door_locks) need this voice from now on.
+      setSpeakerGate(true, _svSpeakerId);
     } else {
       _log('[SV] skipped; clearing speakers');
       if (wakeword != null) await wakeword.setSpeakers(const []);
       await _speech.setSpeakers(const []);
+      setSpeakerGate(false, null);
     }
   }
 
@@ -1128,8 +1171,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           await _speech.pauseSpeechRecognition();
         } catch (_) {}
         await _speakStartupNarration([
-          '$wakeWord detected.',
-          'Now you can test the voice capabilities in five different ways. You can select a Local AI Chat that runs fully on this device, a full AI Chat using remote Gemini, or simply test Speech to Text and Text to Speech individually or a combination of both.',
+          narration.wakeWordDetected(wakeWord),
+          narration.modeSelection,
         ]);
         if (!mounted) return;
         setState(() {
@@ -1346,8 +1389,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
             timeout: const Duration(seconds: 8),
           );
           _log('MCP server connected (${server.client.protocolEra}): ${server.tools.map((t) => t.name).join(', ')}');
-          // They run on a remote server: the agent says a filler while they run.
-          await _localLlm.setExternalTools(server.tools);
+          // They run on a remote server: the agent says a filler while they run (set with the car tools in the warm-up).
+          _mcpTools = server.tools;
         } catch (error) {
           _log('MCP server unavailable: $error');
         }
@@ -1356,31 +1399,83 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   /// Downloads (if needed) and loads the selected on-device model, then
   /// prefills the system prompt. Runs when Local AI Chat opens and after a
   /// model switch; only the latest call updates the status.
+  /// Sets the Local AI Chat status ('Loading...', 'Downloading N%', 'Warming up...', 'Ready', 'Failed: ...') and the loading
+  /// screen's stage; the stage's seconds restart when it changes and tick until ready or failed.
+  void _setLocalModelStatus(String status) {
+    final stage = status.startsWith('Downloading')
+        ? 'download'
+        : status.startsWith('Warming')
+        ? 'warmup'
+        : status.startsWith('Failed')
+        ? 'failed'
+        : status == 'Ready'
+        ? 'ready'
+        : 'load';
+    if (stage != _loadingStage) _loadingStageStartedAt = DateTime.now();
+    _loadingStage = stage;
+    _localModelStatus = status;
+    if (stage == 'ready' || stage == 'failed') {
+      _loadingTicker?.cancel();
+      _loadingTicker = null;
+    } else {
+      _loadingTicker ??= Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  /// Switches the Local AI Chat demo: the agent is re-created with that demo's pack; with [rewarm], the chat restarts on its model.
+  Future<void> _switchLocalDemo(String demo, bool rewarm) async {
+    setState(() => _localDemo = demo);
+    if (demo == currentLocalDemo) return;
+    await _localLlm.store.setDemo(demo);
+    await LocalAgent.reset();
+    if (rewarm) {
+      _resetLocalChat();
+      _warmUpLocalModel();
+    }
+  }
+
+  /// Reset Chat: forgets the conversation (the model stays loaded).
+  void _resetLocalChat() {
+    _chatHistory.clear();
+    setState(() {
+      _aiChatResponse = '';
+      _lastTranscript = '';
+      _partialTranscript = '';
+    });
+  }
+
   void _warmUpLocalModel() {
     final seq = ++_localModelWarmUpSeq;
     bool isLatest() => mounted && seq == _localModelWarmUpSeq;
-    setState(() => _localModelStatus = 'Loading...');
+    setState(() => _setLocalModelStatus('Loading...'));
     unawaited(_localLlm.store.selectedModel().then((model) {
       if (isLatest()) setState(() => _localModelName = model.displayName);
     }));
     unawaited(_calories.load());
     _loadMcpTools()
+        .then((_) async {
+          // The car demo's tools in the wording the model was trained with; the calories demo has none (its skill is in its pack).
+          final model = await _localLlm.store.selectedModel();
+          final demoTools = currentLocalDemo == 'car' ? carTools(profile: localLlmCarTools, wording: model.toolWording ?? 'v1') : <ToolDefinition>[];
+          await _localLlm.setExternalTools([...demoTools, ..._mcpTools], online: (t) => !carToolNames.contains(t.name));
+        })
         .then((_) => _localLlm.warmUp(
           history: _localChatHistory(),
+          onWarming: () {
+            if (isLatest()) setState(() => _setLocalModelStatus('Warming up...'));
+          },
           onDownloadProgress: (fraction) {
             if (!isLatest()) return;
-            setState(() {
-              _localModelStatus = fraction >= 1
-                  ? 'Loading...'
-                  : 'Downloading ${(fraction * 100).round()}%';
-            });
+            setState(() => _setLocalModelStatus(fraction >= 1 ? 'Loading...' : 'Downloading ${(fraction * 100).round()}%'));
           },
         ))
         .then((model) async {
           if (!isLatest()) return;
           setState(() {
             _localModelName = model.displayName;
-            _localModelStatus = 'Ready';
+            _setLocalModelStatus('Ready');
           });
           final deleted = await _localLlm.store.deleteUnusedModelFiles();
           if (deleted.isNotEmpty) _log('Deleted unused model files: $deleted');
@@ -1388,7 +1483,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         .catchError((Object error) {
           _log('Local model warm-up failed: $error');
           if (isLatest()) {
-            setState(() => _localModelStatus = 'Failed: ${_localErrorText(error)}');
+            setState(() => _setLocalModelStatus('Failed: ${_localErrorText(error)}'));
           }
         });
   }
@@ -1421,6 +1516,19 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     try {
       await _pauseSpeechForTts();
       if (!_isSpeechUiEpochCurrent(epoch)) return;
+
+      // STT noise ("The.", "But.", "Alma Alma."): not sent to the model (flow/fragments.dart, same rules as the RN example).
+      if (isNoiseFragment(userText)) {
+        final reply = didNotCatch[currentAppLanguage] ?? didNotCatch['en']!;
+        _log('noise fragment, asking to repeat: $userText');
+        _chatHistory.add({'role': 'model', 'text': reply});
+        setState(() {
+          _aiChatResponse = reply;
+          _currentSpeechSentence = 'Local AI: $reply';
+        });
+        await _speakWhileSpeechPaused(reply, speakerId: _speakerId, speed: _speakerSpeed);
+        return;
+      }
 
       final model = await _localLlm.store.selectedModel();
       if (!_localLlm.isModelReady(model.id)) {
@@ -1465,7 +1573,9 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       String? webSource;
       var shown = '';
       late void Function(String) speakSentence;
-      speakSentence = (String sentence) {
+      speakSentence = (String raw) {
+        // Car demo: the model's bare "Done." is never a confirmation (the app says what it did) -> "didn't catch that".
+        final sentence = currentLocalDemo == 'car' && isBareDone(raw) ? (didNotCatch[currentAppLanguage] ?? didNotCatch['en']!) : raw;
         // Straight to the speech queue: it prepares the next sentences while
         // this one plays. `spoken` completes when everything queued is spoken.
         spoken = _speech.speak(
@@ -1504,6 +1614,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
             speakSentence(event.text);
           } else if (event.type == 'status' && event.json['status'] == 'searching') {
             setState(() => _message = 'Searching the web...');
+          } else if (event.type == 'status' && event.json['status'] == 'remote') {
+            setState(() => _message = 'Asking the online assistant...');
           } else if (event.type == 'webSearch') {
             setState(() {
               _message = event.json['failed'] == true
@@ -1721,7 +1833,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         jsonEncode({
           'system_instruction': {
             'parts': [
-              {'text': '$_geminiSystemPrompt $llmReplyInstruction'},
+              {'text': '$_geminiSystemPrompt ${llmReplyInstructionFor(currentAppLanguage)}'},
             ],
           },
           'contents': nextHistory,
@@ -2181,9 +2293,11 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   }
 
   /// The RN example's getTTSVoiceConfig(...).model.
-  String get _selectedTtsModel {
-    return _sharedTtsModel;
-  }
+  String get _selectedTtsModel => languageFile(currentAppLanguage, 'model') ?? languageFile('en', 'model')!;
+
+  /// The voice's name as spoken in the narration (RN spokenVoiceName): the Portuguese models read "Rich" badly.
+  String _spokenVoiceName(String voice) =>
+      isPortuguese && voice == 'Rich' ? 'Ritchie' : currentAppLanguage == 'el' && voice == 'Eleni' ? 'Ελένη' : voice;
 
   String? _appliedTtsVoice;
 
@@ -2217,7 +2331,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   // The expandable list of emotion / style examples of [voice]; tapping one
   // calls [onPick] with its text.
   Widget _styleExamples(String voice, void Function(String text) onPick, String pickHint) {
-    final examples = voiceStyleExamples(_voiceAbilities[voice] ?? const [], 'en');
+    final examples = voiceStyleExamples(_voiceAbilities[voice] ?? const [], currentAppLanguage);
     if (examples.isEmpty) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.only(top: 12),
@@ -2268,7 +2382,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
                 ),
               ),
             const SizedBox(height: 8),
-            Text(styleTagHint['en']!, style: _Styles.small),
+            Text(styleTagHint[currentAppLanguage] ?? styleTagHint['en']!, style: _Styles.small),
           ],
         ],
       ),
@@ -2445,7 +2559,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       _appliedTtsVoice = null;
       await _speech.changeVoice(result.voice);
       await _speech.speak(
-        _applyTtsTextPolicy('Hi! I am ${result.voice}. This is my new cloned voice.'),
+        _applyTtsTextPolicy(narration.cloneCreated(result.voice)),
         speed: _speedFor(result.voice),
       );
     } catch (error) {
@@ -2540,7 +2654,9 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   double get _speakerSpeed => _speedFor(_voiceChoice);
 
   /// The RN example's getTTSVoiceConfig(...).speed.
-  static double _speedFor(String voice) {
+  double _speedFor(String voice) {
+    // Every voice of a non-English model, a cloned one included (RN getTTSVoiceConfig).
+    if (currentAppLanguage != 'en') return _brazilianSpeakerSpeed;
     if (voice == 'Rich') return _richSpeakerSpeed;
     if (_builtInVoices.contains(voice)) return _sharedModelSpeakerSpeed;
     return _clonedVoiceSpeed;
@@ -2753,7 +2869,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(color: _rnSoftFill, borderRadius: BorderRadius.circular(12)),
-              child: const Text(
+              child: Text(
                 voiceCloneReadingText,
                 style: TextStyle(color: _rnText, fontSize: 16, height: 1.5),
               ),
@@ -2954,8 +3070,137 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     );
   }
 
+  /// The language screen's choice: the TTS model, voice-cloning encoder, STT locale, narration, agent packs and car replies
+  /// follow it. Then the demo starts (permissions, speech engine, wake word).
+  // Language packs (as the RN example, 2026-11-12): a language that isn't built in shows the download screen until its pack is on
+  // the device; only then is the language chosen and the demo starts.
+  String? _packLanguage;
+  LanguagePackProgress? _packProgress;
+  String? _packError;
+  final Map<String, bool> _readyPacks = {};
+
+  Future<void> _refreshReadyPacks() async {
+    for (final l in appLanguageInfos) {
+      if (isDownloadableLanguage(l.id)) _readyPacks[l.id] = await isLanguagePackReady(l.id);
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _selectLanguage(String language) async {
+    if (!isDownloadableLanguage(language) || await isLanguagePackReady(language)) {
+      _chooseLanguage(language);
+      return;
+    }
+    _startPackDownload(language);
+  }
+
+  void _startPackDownload(String language) {
+    setState(() {
+      _packLanguage = language;
+      _packProgress = null;
+      _packError = null;
+      _stage = _Stage.languageDownload;
+    });
+    downloadLanguagePack(language, onProgress: (p) {
+      if (mounted && _packLanguage == language) setState(() => _packProgress = p);
+    }).then((_) {
+      if (!mounted || _packLanguage != language) return; // the user went back meanwhile
+      _readyPacks[language] = true;
+      _packLanguage = null;
+      _chooseLanguage(language);
+    }).catchError((Object error) {
+      if (mounted && _packLanguage == language) {
+        setState(() => _packError = error.toString().replaceFirst(RegExp(r'^(Bad state|HttpException): '), ''));
+      }
+    });
+  }
+
+  void _leavePackDownload() {
+    final language = _packLanguage;
+    if (language != null) cancelLanguagePackDownload(language);
+    setState(() {
+      _packLanguage = null;
+      _stage = _Stage.language;
+    });
+  }
+
+  void _chooseLanguage(String language) {
+    setCurrentAppLanguage(language);
+    setState(() {
+      _voiceChoice = originalTtsVoices[language] ?? _defaultVoice;
+      _stage = _Stage.preparing;
+    });
+    unawaited(_startDemo());
+  }
+
   Widget _buildStage(BuildContext context) {
     switch (_stage) {
+      case _Stage.language:
+        return _PromptShell(
+          message: '',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _PromptTitle('Choose Your Language'),
+              const SizedBox(height: 8),
+              const Text('The language for speech recognition and the voices.', textAlign: TextAlign.center, style: _Styles.body),
+              const SizedBox(height: 18),
+              for (final l in appLanguageInfos.where((l) => !l.hidden)) ...[
+                _ModeButton(
+                  title: l.label,
+                  description: isDownloadableLanguage(l.id) && _readyPacks[l.id] != true
+                      ? '${l.id}  ·  ⬇ ${(languagePackSizeBytes(l.id) / 1e6).round()} MB'
+                      : l.id,
+                  selected: false,
+                  onPressed: () => unawaited(_selectLanguage(l.id)),
+                ),
+                const SizedBox(height: 10),
+              ],
+            ],
+          ),
+        );
+      case _Stage.languageDownload:
+        final language = _packLanguage ?? 'en';
+        final total = _packProgress?.bytesTotal ?? languagePackSizeBytes(language);
+        final done = (_packProgress?.bytesDone ?? 0).clamp(0, total);
+        final fraction = total > 0 ? done / total : 0.0;
+        final status = _packError != null
+            ? 'Download failed'
+            : _packProgress?.verifying == true
+                ? 'Checking the download…'
+                : _packProgress != null
+                    ? 'Downloading… ${(fraction * 100).floor()}%'
+                    : 'Starting the download…';
+        return _PromptShell(
+          message: '',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _PromptTitle('Downloading language pack'),
+              const SizedBox(height: 8),
+              Text(appLanguageInfo(language).label, textAlign: TextAlign.center, style: _Styles.body),
+              const SizedBox(height: 8),
+              Text(
+                'The voices for this language are downloaded once (${(total / 1e6).round()} MB). The app starts when the download is complete.',
+                textAlign: TextAlign.center,
+                style: _Styles.body,
+              ),
+              const SizedBox(height: 18),
+              Text(status, style: _Styles.body),
+              Text('${(done / 1e6).round()} / ${(total / 1e6).round()} MB', style: _Styles.small),
+              const SizedBox(height: 8),
+              LinearProgressIndicator(value: fraction),
+              if (_packError != null) ...[
+                const SizedBox(height: 10),
+                Text(_packError!, style: const TextStyle(color: Color(0xffff8a8a))),
+                const SizedBox(height: 10),
+                _PrimaryButton(label: 'Retry', onPressed: () => _startPackDownload(language)),
+              ],
+              const SizedBox(height: 10),
+              TextButton(onPressed: _leavePackDownload, child: const Text('Back')),
+            ],
+          ),
+        );
       case _Stage.preparing:
         return _PromptShell(
           message: _message,
@@ -2984,6 +3229,9 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           ),
         );
       case _Stage.voicePicker:
+        // A TTS v1 language's own voice (no voice conversion: fastest): its own section, first (as the RN example).
+        final originalVoiceName = originalTtsVoices[currentAppLanguage];
+        final originalVoice = originalVoiceName != null && _builtInVoices.contains(originalVoiceName) ? originalVoiceName : null;
         final emotionVoices = _builtInVoices.where(_voiceAbilities.containsKey).toList();
         final examplesVoice = _voiceAbilities.containsKey(_voiceChoice)
             ? _voiceChoice
@@ -3007,6 +3255,11 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
                 child: const Text('Clone a new Voice'),
               ),
               const SizedBox(height: 18),
+              if (originalVoice != null) ...[
+                const _HighlightLabel('Original Voice (fastest)'),
+                _voiceGrid([originalVoice]),
+                const SizedBox(height: 18),
+              ],
               if (emotionVoices.isNotEmpty) ...[
                 const _HighlightLabel('Voices with Emotions & Styles in Free Text'),
                 _voiceGrid(emotionVoices),
@@ -3019,7 +3272,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
                 const SizedBox(height: 18),
               ],
               _OptionLabel(emotionVoices.isNotEmpty ? 'Other Built-in Voices' : 'Built-in Voices'),
-              _voiceGrid(_builtInVoices.where((voice) => !_voiceAbilities.containsKey(voice)).toList()),
+              _voiceGrid(_builtInVoices.where((voice) => !_voiceAbilities.containsKey(voice) && voice != originalVoice).toList()),
               const SizedBox(height: 18),
               _OptionLabel('Cloned Voices'),
               if (_clonedVoices.isNotEmpty)
@@ -3166,15 +3419,22 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
             children: [
               const _PromptTitle('Choose Mode'),
               const SizedBox(height: 18),
-              _ModeButton(
-                title: 'Local AI Chat',
-                description: 'STT → on-device LLM → TTS',
-                selected: _appModeChoice == _AppModeChoice.localAiChat,
-                onPressed: () {
-                  unawaited(_selectMode(_AppModeChoice.localAiChat));
-                },
-              ),
-              const SizedBox(height: 10),
+              for (final (demo, title, description) in const [
+                ('car', 'Local AI · Car demo', 'Automotive Agent: simulated VW car, on-device'),
+                ('calories', 'Local AI · Calories demo', 'Personal Agent: calories and memory, on-device'),
+              ]) ...[
+                _ModeButton(
+                  title: title,
+                  description: description,
+                  selected: _appModeChoice == _AppModeChoice.localAiChat && _localDemo == demo,
+                  onPressed: () async {
+                    // The mode's warm-up then loads that demo's pack and model.
+                    await _switchLocalDemo(demo, false);
+                    unawaited(_selectMode(_AppModeChoice.localAiChat));
+                  },
+                ),
+                const SizedBox(height: 10),
+              ],
               _ModeButton(
                 title: 'Full AI Chat',
                 description: 'STT → Gemini → TTS',
@@ -3238,6 +3498,13 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           localModelName: _localModelName,
           localModelStatus: _localModelStatus,
           onChangeLocalModel: _showLocalModelPicker,
+          localDemo: _localDemo,
+          loadingStage: _loadingStage,
+          loadingSeconds: DateTime.now().difference(_loadingStageStartedAt).inSeconds,
+          isWorking: _isAIChatLoading,
+          onRetryLocalModel: _warmUpLocalModel,
+          onResetChat: _resetLocalChat,
+          onBack: () => unawaited(_goBackToModeSelection()),
           calorieStore: _calories,
           currentSpeechSentence: _currentSpeechSentence,
           introScript: _introScript,
@@ -3315,6 +3582,13 @@ class _HomeScreen extends StatelessWidget {
     this.localModelName = '',
     this.localModelStatus = '',
     this.onChangeLocalModel,
+    this.localDemo = 'car',
+    this.loadingStage = 'load',
+    this.loadingSeconds = 0,
+    this.isWorking = false,
+    this.onRetryLocalModel,
+    this.onResetChat,
+    this.onBack,
     this.calorieStore,
     required this.currentSpeechSentence,
     required this.introScript,
@@ -3333,6 +3607,13 @@ class _HomeScreen extends StatelessWidget {
   final String localModelName;
   final String localModelStatus;
   final VoidCallback? onChangeLocalModel;
+  final String localDemo;
+  final String loadingStage;
+  final int loadingSeconds;
+  final bool isWorking;
+  final VoidCallback? onRetryLocalModel;
+  final VoidCallback? onResetChat;
+  final VoidCallback? onBack;
   final CalorieLog? calorieStore;
   final String currentSpeechSentence;
   final String introScript;
@@ -3341,8 +3622,131 @@ class _HomeScreen extends StatelessWidget {
   final String partialTranscript;
   final bool introSpeaking;
 
+  // Local AI Chat, step 1: its own loading screen until the model is ready (download, load, warm-up).
+  Widget _loadingScreen() {
+    final pct = int.tryParse(RegExp(r'Downloading (\d+)%').firstMatch(localModelStatus)?.group(1) ?? '') ?? 0;
+    const order = ['download', 'load', 'warmup'];
+    final at = loadingStage == 'failed' ? -1 : order.indexOf(loadingStage);
+    final stages = [
+      ('Download the model', loadingStage == 'download' ? '$pct%' : 'once, ~380 MB'),
+      ('Load it into memory', ''),
+      ('Warm up', 'reads its instructions and tools once, so replies are fast'),
+    ];
+    return _PromptShell(
+      message: '',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _PromptTitle(localDemo == 'car' ? 'Car demo' : 'Calories demo'),
+          const SizedBox(height: 6),
+          Text(localModelName.isEmpty ? 'On-device model' : localModelName, textAlign: TextAlign.center, style: _Styles.body),
+          const SizedBox(height: 14),
+          for (var i = 0; i < stages.length; i++)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: at > i
+                          ? const Color(0xff30d158)
+                          : at == i
+                          ? const Color(0xff0a84ff)
+                          : const Color(0x33ffffff),
+                    ),
+                    child: Text(at > i ? '✓' : '${i + 1}',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(stages[i].$1,
+                            style: at >= i ? _Styles.body : _Styles.body.copyWith(color: const Color(0x80ffffff))),
+                        if (at == i) ...[
+                          const SizedBox(height: 2),
+                          Text([stages[i].$2, '$loadingSeconds s'].where((t) => t.isNotEmpty).join(' · '), style: _Styles.label),
+                          if (i == 0)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: LinearProgressIndicator(value: pct / 100),
+                            ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (loadingStage == 'failed')
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(localModelStatus, textAlign: TextAlign.center, style: _Styles.body.copyWith(color: const Color(0xffff9f9f))),
+            ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              if (loadingStage == 'failed') ...[
+                Expanded(child: _PrimaryButton(label: 'Retry', onPressed: onRetryLocalModel)),
+                const SizedBox(width: 10),
+              ],
+              Expanded(child: _SecondaryButton(label: 'Back', onPressed: onBack)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Local AI Chat, step 2: only once ready - the car (or calories) status, what was heard (STT), the reply (TTS), the model.
+  Widget _chatScreen() {
+    return _PromptShell(
+      message: '',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _PromptTitle(localDemo == 'car' ? 'Car demo' : 'Calories demo'),
+          if (localDemo == 'car') const CarCard() else if (calorieStore != null) CaloriesCard(store: calorieStore!),
+          _InfoBlock(
+            label: 'You said${isWorking ? ' · working...' : ''}',
+            value: partialTranscript.isNotEmpty && partialTranscript != 'Listening...'
+                ? partialTranscript
+                : lastTranscript.isNotEmpty
+                ? lastTranscript
+                : 'Say the wake word, then speak.',
+          ),
+          _InfoBlock(label: 'Reply', value: aiChatResponse.isNotEmpty ? aiChatResponse : 'The reply will appear here and be spoken.'),
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Row(
+              children: [
+                Expanded(child: Text('Model: $localModelName', style: _Styles.label)),
+                TextButton(onPressed: isWorking ? null : onChangeLocalModel, child: const Text('Change')),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: _PrimaryButton(label: 'Reset Chat', onPressed: onResetChat)),
+              const SizedBox(width: 10),
+              Expanded(child: _SecondaryButton(label: 'Back', onPressed: onBack)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (isLocalAIChat) return localModelStatus == 'Ready' ? _chatScreen() : _loadingScreen();
     final active = isFullAIChatMode || speechMode != null;
     final title = isLocalAIChat
         ? 'Local AI Chat'

@@ -62,6 +62,8 @@ void main() {
             return 0;
           }
           if (call.method == 'setLicense') return true;
+          // The loaded model's own voices (the English model's).
+          if (call.method == 'getAllVoices') return ['Ariana', 'Rich', 'Hanna', 'Kate', 'Jenny', 'Matthew', 'Gloria'];
           return null;
         });
         addTearDown(() {
@@ -77,6 +79,10 @@ void main() {
           }
         });
         await tester.pumpWidget(const DavoiceExampleApp());
+        // First of all: the language.
+        expect(find.text('Choose Your Language'), findsOneWidget);
+        await tester.tap(find.text('English'));
+        await tester.pump();
         for (var i = 0; i < 30 && !calls.contains('speech.initAll'); i++) {
           await tester.runAsync(
             () => Future<void>.delayed(const Duration(milliseconds: 10)),

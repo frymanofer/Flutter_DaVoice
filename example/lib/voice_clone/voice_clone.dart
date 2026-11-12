@@ -13,9 +13,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_davoice/flutter_davoice.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../flow/app_language.dart';
+import '../flow/rn_tables.g.dart';
+import '../tts/language_packs.dart';
+
 /// Voice encoder for createVoiceClone: turns a recording (wav/mp3/m4a/...)
-/// into a `<name>.emd` voice for this English model.
-const voiceEmbedder = 'assets/models/embedder_en.dm';
+/// into a `<name>.emd` voice for the app language's model (a voice fits only its own language's model).
+/// Built in (a Flutter asset) or a downloaded language pack's file (lib/tts/language_packs.dart); English if neither.
+String get voiceEmbedder => languageFile(currentAppLanguage, 'embedder') ?? languageFile('en', 'embedder')!;
 
 /// How long to record: about 10 seconds of natural speech gives a good voice.
 const recommendedRecordingSeconds = 10;
@@ -30,14 +35,16 @@ const maxVoiceVolumePercent = 200;
 const voiceVolumeStep = 10;
 
 /// A text to read aloud while recording (about 10 seconds).
-const voiceCloneReadingText =
-    'Hello! This is my voice. I am recording a short sample, so that my assistant can speak just like me. '
-    'Today is a good day to try something new, and I am happy to hear how it sounds.';
+String get voiceCloneReadingText => voiceCloneReadingTexts[currentAppLanguage] ?? voiceCloneReadingTexts['en']!;
 
-/// The cloned voices folder: new voices are saved here, and the app looks here
-/// for cloned voices. One path for both. Change it to keep voices elsewhere.
-Future<String> clonedVoicesPath() async =>
-    '${(await getApplicationDocumentsDirectory()).path}/cloned_voices';
+/// The cloned voices folder of the app's language: new voices are saved here,
+/// and the app looks here for cloned voices. One path for both. A voice is made
+/// with the language's encoder, so each language has its own folder. Change it
+/// to keep voices elsewhere.
+Future<String> clonedVoicesPath() async {
+  final base = '${(await getApplicationDocumentsDirectory()).path}/cloned_voices';
+  return currentAppLanguage == 'en' ? base : '${base}_${currentAppLanguage.replaceAll('-', '_').toLowerCase()}';
+}
 
 /// The microphone recording, before it becomes a voice (replaced each time).
 Future<String> _recordingPath() async =>

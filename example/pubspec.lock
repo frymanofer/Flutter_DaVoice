@@ -58,7 +58,7 @@ packages:
     source: hosted
     version: "1.19.1"
   crypto:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: crypto
       sha256: c8ea0233063ba03258fbcf2ca4d6dadfefe14f02fab57702265467a19f27fadf
@@ -106,18 +106,18 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_davoice
-      sha256: "3adcee309fe1d0994392ec744f0d75cb94bca96dce5cdb4f6b52bc08b57e735f"
+      sha256: "67cb9dc1ef03ac7f3f43a85e9b50c699e93dcb043dd341258da72ea41d5b1dfb"
       url: "https://pub.dev"
     source: hosted
-    version: "0.0.17"
+    version: "0.0.19"
   flutter_davoice_llm:
     dependency: "direct main"
     description:
       name: flutter_davoice_llm
-      sha256: "620b271c2ba5cf14705a9c301d36970981f7676a8e791baeaa7d373a7f58889b"
+      sha256: fa069a03399d34d8cce64d5b6cb96c8c4018fa3d95697b7b314f80833b6c286a
       url: "https://pub.dev"
     source: hosted
-    version: "0.0.8"
+    version: "0.0.12"
   flutter_driver:
     dependency: transitive
     description: flutter

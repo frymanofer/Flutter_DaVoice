@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_davoice_llm/flutter_davoice_llm.dart';
 
 import '../agent/local_agent.dart';
+import '../flow/app_language.dart';
+import '../speaker_verification/current_speaker.dart';
 import 'model_config.dart';
 import 'model_store.dart';
 
@@ -43,22 +46,53 @@ class LocalLlmService {
   final LocalLlmModelStore store;
   final Future<DavoiceAgent> Function() _agent;
   String? _chatTemplateFor;
+  DavoiceAgent? _configuredAgent;
   Future<void>? _chatTemplateSet;
+  String? _stateRestoredFor;
+  int _nativeLoads = 0;
 
-  /// Tools of a remote MCP server, next to the calorie tracker's. They run
-  /// online, so the agent says a filler while they run. Set before [warmUp]:
-  /// the tool list is part of the system prompt the engine caches.
-  Future<void> setExternalTools(List<ToolDefinition> tools) async {
-    await (await _agent()).setTools(tools, online: (_) => true);
+  /// The app's own tools (the car's) and a remote MCP server's. [online] tools get a filler while they run (default: all). Set
+  /// before [warmUp]: the tool list is part of the system prompt the engine caches.
+  Future<void> setExternalTools(List<ToolDefinition> tools, {bool Function(ToolDefinition tool)? online}) async {
+    await (await _agent()).setTools(tools, online: online ?? (_) => true);
   }
 
-  /// The agent, set up for [model]'s chat template.
+  /// The core's call guards for [mode]: 'correct' fixes / blocks (the split-tool opposite check can only block: 'enforce').
+  static Map<String, String> _callGuardSettings(String mode, {bool historyAsRun = false}) {
+    final opposite = mode == 'correct' ? 'enforce' : mode;
+    // followUp reads the previous turn's calls from the history: only meaningful (and only on) with historyAsRun.
+    final followUp = historyAsRun ? mode : 'off';
+    // dualZone (core g10+): one temperature per side said unambiguously -> the dual-zone call gets exactly those values; a call that
+    // would drop or copy a side is blocked (asked again), never redirected. Older native cores ignore the key. (As the RN example.)
+    return {'polarity': mode, 'direction': mode, 'absRel': mode, 'zone': mode, 'capability': mode, 'numberGround': mode, 'opposite': opposite, 'followUp': followUp, 'dualZone': mode};
+  }
+
+  /// The agent, set up for [model] (as the RN example's provider.ts agentFor): chat template, remote assistant, router, model
+  /// tools, memory, sampling, guards. Sent again for a new agent (a demo switch) or another model.
   Future<DavoiceAgent> _agentFor(LocalLlmModelConfig model) async {
     final agent = await _agent();
-    // Set once per model, even when calls race (warm-up and a prefill).
-    if (_chatTemplateFor != model.id) {
+    if (_chatTemplateFor != model.id || !identical(_configuredAgent, agent)) {
       _chatTemplateFor = model.id;
-      _chatTemplateSet = agent.configure({'chatTemplate': model.chatTemplate.toJson()});
+      _configuredAgent = agent;
+      _chatTemplateSet = agent.configure({
+        'chatTemplate': model.chatTemplate.toJson(),
+        // The remote assistant (agent/remote_assistant.dart: the "no remote model" message, or Gemini with 'cloud').
+        'remote': model.remoteAssistant ? {'enabled': true, 'timeoutMs': 15000} : false,
+        // false: the model decides every turn with every tool (no router, no skill rules).
+        'intentRouter': model.usesRouter,
+        // web_search + get_time for a model trained to call them.
+        'webSearchTool': model.modelTools,
+        'timeTool': model.modelTools,
+        // Saved facts: the pack's 'small' profile; none attached for models that opt out (car commands).
+        'memory': {'profile': 'small', if (!model.relevantMemory) 'relevantMax': 0},
+        if (model.temperature != null) 'sampling': {'temperature': model.temperature},
+        // Sent every time, so switching models never keeps the previous model's guards. Every decision is logged.
+        'guards': _callGuardSettings(model.callGuards ?? 'off', historyAsRun: model.historyAsRun),
+        // Sent every time (shared agent): the previous model's settings must not stick.
+        'historyAsRun': model.historyAsRun,
+        'guidedToolCalls': model.guidedToolCalls,
+        'promptOrder': model.promptOrder ?? 'trained',
+      });
     }
     await _chatTemplateSet;
     return agent;
@@ -80,10 +114,80 @@ class LocalLlmService {
   Future<LocalLlmModelConfig> warmUp({
     List<Map<String, Object?>> history = const [],
     void Function(double fraction)? onDownloadProgress,
+    void Function()? onWarming,
   }) async {
     final model = await store.selectedModel();
-    await _ensureModelLoaded(model, onDownloadProgress);
-    await prefillForTurn(history, '');
+    // The pre-warmed state of the app's language (model.prebuiltStates) downloads next to the model: one progress bar over both files.
+    final language = currentAppLanguage;
+    final prebuilt = model.prebuiltStates[language];
+    final modelBytes = model.sizeBytes ?? 1;
+    final stateBytes = prebuilt?.sizeBytes ?? 0;
+    var modelPart = 0.0;
+    var statePart = 0.0;
+    void report() => onDownloadProgress?.call((modelPart * modelBytes + statePart * stateBytes) / (modelBytes + stateBytes));
+    final prebuiltDownload = store.downloadPrebuiltState(model, language, onProgress: (f) {
+      statePart = f;
+      report();
+    });
+    await _ensureModelLoaded(model, (f) {
+      modelPart = f;
+      report();
+    });
+    final prebuiltPath = await prebuiltDownload;
+    onWarming?.call();
+    // The system prompt processed at an earlier start: restored in under a second instead of ~30-40 s of prompt processing on a
+    // phone CPU. Keyed by the prompt's system part (demo, language, tools), newest 2 per model file (model_store.dart). Only once
+    // per native load; a broken file is deleted.
+    try {
+      final agent = await _agentFor(model);
+      final date = currentDateText();
+      final prompt = await agent.call('prompt', {'text': 'Hello', 'history': history, 'date': date}) as String;
+      // Language in the name: see LocalLlmModelStore.downloadPrebuiltState (as the RN example).
+      final statePath = await store.kvStatePath(model, '$language-${stablePromptKey(prompt, date)}');
+      final stateExists = await File(statePath).exists();
+      // No state of its own yet: the pre-warmed one (same prompt up to the date line in the cache prompt order).
+      final restorePath = stateExists ? statePath : prebuiltPath;
+      var restoredPrebuilt = false;
+      final load = '${model.id}#$_nativeLoads';
+      if (_stateRestoredFor != load && restorePath != null) {
+        final t0 = DateTime.now();
+        try {
+          final n = await llm.loadState(restorePath);
+          restoredPrebuilt = !stateExists;
+          // ignore: avoid_print
+          print('[LocalLLM] KV state restored${restoredPrebuilt ? ' (pre-warmed)' : ''}: $n tokens in ${DateTime.now().difference(t0).inMilliseconds} ms');
+        } catch (error) {
+          // ignore: avoid_print
+          print('[LocalLLM] KV state not usable, deleted: $error');
+          final broken = File(restorePath);
+          await broken.delete().catchError((_) => broken);
+        }
+      }
+      _stateRestoredFor = load;
+      // Answer once, briefly, on the agent's real prompt: the system prompt is in the cache and the first decode has run.
+      final started = DateTime.now();
+      var tokens = 0;
+      await llm.generateStream(prompt, (_, done) {
+        if (!done && ++tokens == 4) llm.cancel();
+      });
+      final warmMs = DateTime.now().difference(started).inMilliseconds;
+      // ignore: avoid_print
+      print('[LocalLLM] warm-up answered ($tokens tokens) in $warmMs ms');
+      // Save the processed prompt when there is none for it yet, or the warm-up had to do real work (the file is ~400 MB).
+      // A pre-warmed state that fit (a fast warm-up) is not copied: it stays the state of this prompt.
+      if ((!stateExists && !(restoredPrebuilt && warmMs <= 5000)) || warmMs > 5000) {
+        final t0 = DateTime.now();
+        final n = await llm.saveState(statePath);
+        // ignore: avoid_print
+        print('[LocalLLM] KV state saved: $n tokens in ${DateTime.now().difference(t0).inMilliseconds} ms');
+        unawaited(store.deleteUnusedModelFiles().catchError((_) => <String>[]));
+      }
+    } catch (error) {
+      // Only a speed-up: a failure here must not block the chat.
+      // ignore: avoid_print
+      print('[LocalLLM] warm-up state step skipped: $error');
+      await prefillForTurn(history, '');
+    }
     return model;
   }
 
@@ -115,16 +219,21 @@ class LocalLlmService {
     final model = await store.selectedModel();
     await _ensureModelLoaded(model, null);
     final agent = await _agentFor(model);
-    return agent.turn(
+    try {
+      return await agent.turn(
       {'text': userText, 'history': history, 'date': currentDateText()},
-      onEvent: (event) {
-        if (event.type == 'text') {
-          onDelta(event.text);
-        } else {
-          onEvent?.call(event);
-        }
-      },
-    );
+        onEvent: (event) {
+          if (event.type == 'text') {
+            onDelta(event.text);
+          } else {
+            onEvent?.call(event);
+          }
+        },
+      );
+    } finally {
+      // The next request starts with nobody heard (door authorization).
+      clearHeardSpeakers();
+    }
   }
 
   /// Stops the turn being run, if any.
@@ -174,5 +283,6 @@ class LocalLlmService {
       await store.modelPath(model),
       options: LocalLlmLoadOptions(contextSize: model.contextSize),
     );
+    _nativeLoads++;
   }
 }
