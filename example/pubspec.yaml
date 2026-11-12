@@ -54,7 +54,10 @@ flutter:
 
   assets:
     - licensekey.txt
-    - local.config.ts
+    # Your own keys (Gemini, web search, USDA, MCP): config/local.config.ts, git-ignored and optional. The app falls back to the
+    # committed template config/local.config.example.ts, so a fresh clone builds and runs without it (folder entry: an absent
+    # file is fine).
+    - config/
     - assets/bellServiceDeskPressXThree.mp3
     - assets/cashRegisterSound.mp3
     - assets/images/logo.jpeg

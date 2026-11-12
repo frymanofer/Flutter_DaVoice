@@ -59,7 +59,7 @@ class LocalAgent {
   static final _listeners = <void Function(AgentEvent event)>{};
   static Map<String, Object?> _keys = const {};
 
-  /// Web search and food lookup settings from local.config.ts:
+  /// Web search and food lookup settings from config/local.config.ts:
   /// WEB_SEARCH_ENGINE ('wikipedia' default | 'tavily' | 'brave'), the API
   /// keys, and USDA_API_KEY (USDA FoodData Central before Wikipedia).
   static Future<void> setKeys({

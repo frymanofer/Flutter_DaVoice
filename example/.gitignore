@@ -23,6 +23,16 @@ migrate_working_dir/
 # is commented out by default.
 #.vscode/
 
+# Local AI context and development notes
+AGENTS.md
+ALIGNMENT_PLAN.md
+ANDROID_COMPATIBILITY.md
+android_version_issues.md
+API_PARITY.md
+CHATGPT_CONTEXT.md
+MEMORY.md
+RESTART_HANDOFF.md
+
 # Flutter/Dart/Pub related
 **/doc/api/
 **/ios/Flutter/.last_build_id
@@ -43,3 +53,11 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Keep local dev overrides and the generated lock OUT of the public example
+# (they must never point at internal ../.. paths). Resolve from pub.dev instead.
+pubspec_overrides.yaml
+pubspec.lock
+
+# Your own keys (copy config/local.config.example.ts); never committed.
+config/local.config.ts

@@ -323,7 +323,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   // other DaVoice libraries.
   // The agent (lib/agent/local_agent.dart: web search, fillers, the calorie
   // tracker's tools) runs the turns. MCP server tools, if configured in
-  // local.config.ts, are added at warm-up.
+  // config/local.config.ts, are added at warm-up.
   final _calories = CalorieLog();
   late final _localLlm = LocalLlmService(
     licenseKey: () => _licenseController.text.trim(),
@@ -396,7 +396,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
 
   Future<void> _loadGeminiApiKey() async {
     try {
-      final config = await rootBundle.loadString('local.config.ts');
+      // Your keys (git-ignored, optional), else the committed template (placeholders: Full AI Chat then asks for a key).
+      final config = await rootBundle.loadString('config/local.config.ts').catchError((Object _) => rootBundle.loadString('config/local.config.example.ts'));
       String? value(String name) => RegExp(
         name + r'''\s*=\s*['"]([^'"]*)['"]''',
       ).firstMatch(config)?.group(1)?.trim();
@@ -1376,7 +1377,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           },
       ];
 
-  /// Connects the MCP server from local.config.ts once (before the first
+  /// Connects the MCP server from config/local.config.ts once (before the first
   /// warm-up: the tool list is part of the cached system prompt). A failure
   /// only logs; the calorie tools keep working.
   Future<void> _loadMcpTools() => _mcpToolsLoaded ??= () async {
@@ -1768,7 +1769,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     final normalized = raw.toLowerCase();
 
     if (normalized.contains('api key') ||
-        normalized.contains('local.config.ts')) {
+        normalized.contains('config/local.config.ts')) {
       return 'This demo uses Google Gemini as the backend language model! Unfortunately the Gemini API key is not configured in this build yet.';
     }
 
@@ -1802,7 +1803,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   Future<String> _generateGeminiReply(String userText, int epoch) async {
     final apiKey = _geminiApiKey;
     if (apiKey == null || apiKey.isEmpty) {
-      throw StateError('Gemini API key was not loaded from local.config.ts.');
+      throw StateError('Gemini API key was not loaded from config/local.config.ts.');
     }
 
     final uri = Uri.parse(

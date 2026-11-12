@@ -22,7 +22,7 @@ class RemoteAssistant {
   static String _model = '';
   static String _systemPrompt = '';
 
-  /// AI Chat's Gemini settings (from local.config.ts).
+  /// AI Chat's Gemini settings (from config/local.config.ts).
   static void configure({
     required String apiKey,
     required String model,
@@ -95,7 +95,7 @@ class RemoteAssistant {
   ) async {
     final apiKey = _apiKey;
     if (apiKey == null || apiKey.isEmpty) {
-      throw StateError('Gemini API key was not loaded from local.config.ts.');
+      throw StateError('Gemini API key was not loaded from config/local.config.ts.');
     }
     final context = <String>[];
     final date = request['date']?.toString() ?? '';

@@ -31,6 +31,17 @@
 **/*.xcworkspace/xcuserdata/
 **/*.xcuserdatad/
 
+# Local AI context and development notes
+/example/AGENTS.md
+/example/ALIGNMENT_PLAN.md
+/example/ANDROID_COMPATIBILITY.md
+/example/android_version_issues.md
+/example/API_PARITY.md
+/example/CHATGPT_CONTEXT.md
+/example/MEMORY.md
+/example/RESTART_HANDOFF.md
+
+  
 # IDEs
 .idea/
 .vscode/

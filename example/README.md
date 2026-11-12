@@ -6,6 +6,21 @@ The main project README lives at:
 
 This `example/` directory contains the runnable Flutter app.
 
+## Run it
+
+```bash
+git lfs pull          # the voice models are stored with Git LFS
+flutter pub get
+flutter run           # or: flutter build apk --release
+```
+
+Nothing else is needed. Optional: your own keys (Gemini for Full AI Chat, web search, USDA, an MCP server) go in
+`config/local.config.ts`: copy `config/local.config.example.ts` and fill it in (git-ignored). Without it the app uses the
+template, and Full AI Chat asks for a Gemini key.
+
+English and Brazilian Portuguese voices are built into the app; the other languages are downloaded the first time they are
+chosen (`assets/language_packs.json`).
+
 ## Android compatibility
 
 This example uses Flutter 3.47 or newer, AGP 9.0.1, Gradle 9.1.0, and
@@ -71,7 +86,7 @@ The tracker's tools run in the agent (their definitions, routing and messages ar
 `agent.skill('calories', 'log.get')` and the agent's `skill` events). Your app's own tools,
 or a remote MCP server's, join with `agent.setTools(tools)`.
 
-Optional settings, in the git-ignored `local.config.ts` asset:
+Optional settings, in the git-ignored `config/local.config.ts` asset:
 
 ```ts
 export const MCP_SERVER_URL = 'https://example.com/mcp';  // optional: tools from a remote MCP server
@@ -87,7 +102,7 @@ prices), the app says a short phrase such as "Well, that is a good question, let
 search.", searches the web, and the on-device model answers from the results. Other
 questions never leave the device.
 
-The search engine is replaceable. Choose it in the git-ignored `local.config.ts` asset
+The search engine is replaceable. Choose it in the git-ignored `config/local.config.ts` asset
 (the same file that holds `GEMINI_API_KEY`); every line is optional:
 
 ```ts
