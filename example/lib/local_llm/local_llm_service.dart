@@ -64,7 +64,7 @@ class LocalLlmService {
     final followUp = historyAsRun ? mode : 'off';
     // dualZone (core g10+): one temperature per side said unambiguously -> the dual-zone call gets exactly those values; a call that
     // would drop or copy a side is blocked (asked again), never redirected. Older native cores ignore the key. (As the RN example.)
-    return {'polarity': mode, 'direction': mode, 'absRel': mode, 'zone': mode, 'capability': mode, 'numberGround': mode, 'opposite': opposite, 'followUp': followUp, 'dualZone': mode};
+    return {'polarity': mode, 'direction': mode, 'absRel': mode, 'zone': mode, 'capability': mode, 'numberGround': mode, 'opposite': opposite, 'followUp': followUp, 'dualZone': mode, 'enumWords': mode};
   }
 
   /// The agent, set up for [model] (as the RN example's provider.ts agentFor): chat template, remote assistant, router, model
@@ -92,6 +92,7 @@ class LocalLlmService {
         'historyAsRun': model.historyAsRun,
         'guidedToolCalls': model.guidedToolCalls,
         'promptOrder': model.promptOrder ?? 'trained',
+        'guardRetry': model.guardRetry,
       });
     }
     await _chatTemplateSet;

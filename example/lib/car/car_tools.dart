@@ -36,6 +36,8 @@ const _ptLevel = {'off': 'desligado', 'low': 'baixo', 'medium': 'médio', 'high'
 const _ptPlace = {'gas_station': 'posto de combustível', 'ev_charger': 'carregador', 'parking': 'estacionamento', 'restaurant': 'restaurante', 'coffee': 'café', 'rest_area': 'parada'};
 const _ptAvoid = {'tolls': 'pedágios', 'traffic': 'trânsito', 'highways': 'rodovias', 'ferries': 'balsas'};
 const _ptAir = {'face': 'rosto', 'feet': 'pés', 'face_and_feet': 'rosto e pés', 'windshield': 'para-brisa'};
+// with the article, for the spoken sentence ("para os pés", not "para o pés"; as the RN example)
+const _ptAirArt = {'face': 'o rosto', 'feet': 'os pés', 'face_and_feet': 'o rosto e os pés', 'windshield': 'o para-brisa'};
 const _enSeat = {'driver': "the driver's seat", 'passenger': 'the passenger seat', 'rear_left': 'the rear left seat', 'rear_right': 'the rear right seat'};
 const _enPlace = {'gas_station': 'a gas station', 'ev_charger': 'an EV charger', 'parking': 'a parking spot', 'restaurant': 'a restaurant', 'coffee': 'a coffee shop', 'rest_area': 'a rest area'};
 const _ptPlaceSay = {'gas_station': 'um posto de combustível', 'ev_charger': 'um carregador', 'parking': 'um estacionamento', 'restaurant': 'um restaurante', 'coffee': 'um café', 'rest_area': 'uma parada'};
@@ -258,10 +260,10 @@ final Map<String, _Outcome Function(_Args)> _handlers = {
   },
   'set_airflow': (a) {
     final m = _str(a['mode']);
-    if (_s.airflow == m) return _already(_l('airflow unchanged', 'ar sem mudança'), _l('The air already goes to ${_enAir[m] ?? _words(m)}.', 'O ar já vai para o ${_ptAir[m] ?? m}.'));
+    if (_s.airflow == m) return _already(_l('airflow unchanged', 'ar sem mudança'), _l('The air already goes to ${_enAir[m] ?? _words(m)}.', 'O ar já vai para ${_ptAirArt[m] ?? m}.'));
     _s.airflow = m;
     car.changed();
-    return _done(_l('air to ${_words(m)}', 'ar para ${_ptAir[m] ?? m}'), {}, _l('The air now goes to ${_enAir[m] ?? _words(m)}.', 'O ar agora vai para o ${_ptAir[m] ?? m}.'));
+    return _done(_l('air to ${_words(m)}', 'ar para ${_ptAir[m] ?? m}'), {}, _l('The air now goes to ${_enAir[m] ?? _words(m)}.', 'O ar agora vai para ${_ptAirArt[m] ?? m}.'));
   },
   'set_defrost': (a) {
     final target = _str(a['target']);

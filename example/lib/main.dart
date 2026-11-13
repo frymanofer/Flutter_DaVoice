@@ -1034,14 +1034,24 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     if (!mounted) return;
     setState(() => _message = 'Initializing speech engine...');
     _appliedTtsVoice = null;
-    await _speech.initAll(
-      DavoiceInitAllOptions(
-        locale: appLanguageInfo(currentAppLanguage).sttLocale,
-        model: _selectedTtsModel,
-        onboardingJsonPath: enrollmentJsonPath,
-        speakerId: _svSpeakerId,
-      ),
-    );
+    final language = currentAppLanguage;
+    Future<void> init() => _speech.initAll(
+          DavoiceInitAllOptions(
+            locale: appLanguageInfo(language).sttLocale,
+            model: _selectedTtsModel,
+            onboardingJsonPath: enrollmentJsonPath,
+            speakerId: _svSpeakerId,
+          ),
+        );
+    try {
+      await init();
+    } catch (error) {
+      // A downloaded voice version that doesn't load (remote manifest update): back to the last working version, once.
+      if (!isDownloadableLanguage(language) || !await rollbackLanguagePack(language)) rethrow;
+      _log('[languagePacks] $language: the new voice files did not load, back to the last working version ($error)');
+      await init();
+    }
+    if (isDownloadableLanguage(language)) unawaited(markLanguagePackWorking(language));
     if (!mounted) {
       await _speech.destroyAll();
       return;
@@ -3081,6 +3091,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   final Map<String, bool> _readyPacks = {};
 
   Future<void> _refreshReadyPacks() async {
+    // Remote voice manifest (signed; never code or the LLM): new voice files for downloaded languages without an app update.
+    _log('[languagePacks] ${await refreshLanguagePackManifest()}');
     for (final l in appLanguageInfos) {
       if (isDownloadableLanguage(l.id)) _readyPacks[l.id] = await isLanguagePackReady(l.id);
     }
@@ -3090,6 +3102,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   Future<void> _selectLanguage(String language) async {
     if (!isDownloadableLanguage(language) || await isLanguagePackReady(language)) {
       _chooseLanguage(language);
+      // a newer voice version (remote manifest) downloads quietly for the next start; this session keeps the one it has
+      if (isDownloadableLanguage(language)) updateLanguagePackInBackground(language);
       return;
     }
     _startPackDownload(language);

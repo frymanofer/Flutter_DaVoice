@@ -62,9 +62,10 @@ void main() {
       final raf = f.openSync(mode: FileMode.write)..truncateSync((languages['fr'][kind] as Map)['bytes'] as int);
       raf.closeSync();
     }
+    // a download of the first (unversioned) layout is moved into its version folder: language_packs/<lang>/<version>/<file>
     expect(await isLanguagePackReady('fr'), isTrue);
-    expect(languageFile('fr', 'model'), '$docs/language_packs/fr/model_ex2_french.dm');
-    expect(voiceEmbedder, '$docs/language_packs/fr/embedder_fr.dm');
+    expect(languageFile('fr', 'model'), matches(RegExp('^${RegExp.escape(docs)}/language_packs/fr/[0-9a-f]{12}-[0-9a-f]{12}/model_ex2_french\\.dm\$')));
+    expect(voiceEmbedder, matches(RegExp('^${RegExp.escape(docs)}/language_packs/fr/[0-9a-f]{12}-[0-9a-f]{12}/embedder_fr\\.dm\$')));
   });
 
   test('every language has complete narration, a reading text and style examples', () {

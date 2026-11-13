@@ -144,4 +144,12 @@ void main() {
     expect(say('set_fan_speed', {'level': 0}), 'The lowest fan level is 1, so I set it to level 1.');
     expect(say('set_fan_speed', {'level': 4}), 'I set the fan to level 4.');
   });
+
+  test('airflow sentences use the article in pt-BR ("para os pés"; as the RN example)', () {
+    setCurrentAppLanguage('pt-BR');
+    expect(say('set_airflow', {'mode': 'feet'}), 'O ar agora vai para os pés.');
+    expect(say('set_airflow', {'mode': 'feet'}), 'O ar já vai para os pés.');
+    expect(say('set_airflow', {'mode': 'face_and_feet'}), 'O ar agora vai para o rosto e os pés.');
+    expect(say('set_airflow', {'mode': 'windshield'}), 'O ar agora vai para o para-brisa.');
+  });
 }

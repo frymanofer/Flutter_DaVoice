@@ -24,6 +24,7 @@ class LocalLlmModelConfig {
     this.historyAsRun = false,
     this.guidedToolCalls = false,
     this.promptOrder,
+    this.guardRetry = false,
     this.prebuiltStates = const {},
   });
 
@@ -50,6 +51,7 @@ class LocalLlmModelConfig {
       historyAsRun: json['historyAsRun'] as bool? ?? false,
       guidedToolCalls: json['guidedToolCalls'] as bool? ?? false,
       promptOrder: json['promptOrder'] as String?,
+      guardRetry: json['guardRetry'] as bool? ?? false,
     );
   }
 
@@ -108,6 +110,10 @@ class LocalLlmModelConfig {
   /// Agent configure "promptOrder": 'trained' (default) or 'cache' (only for a model validated in that order).
   final String? promptOrder;
 
+  /// Agent configure "guardRetry" (core 2026-11-12, as the RN example): when a guard blocks a wrong-tool call ("close the windows" ->
+  /// close_doors), the same model reconsiders once with that tool excluded; the new call passes every guard, otherwise the user is asked.
+  final bool guardRetry;
+
   /// Pre-warmed KV states by app language (as the RN example's prebuiltStates): the system prompt already processed offline with
   /// this exact model file, pack, tools and settings, so the first start skips the 25-40 s warm-up. Downloaded with the model
   /// (sha256 checked); a language without one warms up on the phone as before. Only valid with promptOrder 'cache'. Built-ins only.
@@ -133,6 +139,7 @@ class LocalLlmModelConfig {
         if (historyAsRun) 'historyAsRun': true,
         if (guidedToolCalls) 'guidedToolCalls': true,
         if (promptOrder != null) 'promptOrder': promptOrder,
+        if (guardRetry) 'guardRetry': true,
       };
 }
 
@@ -143,6 +150,8 @@ const localLlmQwen25_1_5b = 'qwen2.5-1.5b-instruct';
 // selected falls back to its demo's default, model_store.dart selectedModel).
 const localLlmDavoicePersonal = 'davoice-personal-agent-0.6b';
 const localLlmDavoiceAutomotiveR4b = 'davoice-automotive-agent-0.6b-r4b-it100';
+// Automotive Agent r8d_it150 (the preferred model, h3d wording; as the RN example): url empty until its R2 upload is verified.
+const localLlmDavoiceAutomotiveR8d = 'davoice-automotive-agent-0.6b-r8d-it150';
 // EXPERIMENTAL Automotive Agent candidates (2026-11-11; C3 preferred, A fallback; NOT defaults; files sideloaded for the in-app test).
 const localLlmDavoiceAutomotiveC3Exp = 'davoice-automotive-agent-0.6b-c3-auto3-h3-it300-experimental';
 const localLlmDavoiceAutomotiveAExp = 'davoice-automotive-agent-0.6b-a-auto1-h3-it1050-experimental';
@@ -191,6 +200,7 @@ final builtinLocalLlmModels = [
     historyAsRun: true,
     guidedToolCalls: true,
     promptOrder: 'cache',
+    guardRetry: true,
     // Made 2026-11-11 on the S20 by the RN example (r4b + cache order + agent_automotive pack + h3 vw_demo tools); verified on R2
     // 2026-11-12 (HTTP 200, size + sha256). Regenerate whenever the model, pack, tools or core prompt text change.
     prebuiltStates: {
@@ -203,6 +213,42 @@ final builtinLocalLlmModels = [
         url: '$_r2/prewarm/r4b_it100_prewarm_pt-BR.kvstate',
         sha256: '68502883de5e13438dfb116d68be2595d2c97fa6843f75955582be3e85f9990a',
         sizeBytes: 401464709,
+      ),
+    },
+  ),
+  // Automotive Agent r8d_it150 (as the RN example): h3d wording, the bounded guard retry; url empty until the R2 upload is verified
+  // (a file already in the models folder is used). Becomes the car demo's default with its pre-warmed states.
+  LocalLlmModelConfig(
+    id: localLlmDavoiceAutomotiveR8d,
+    displayName: 'DaVoice Automotive Agent 0.6B (r8d)',
+    filename: 'davoice-automotive-qwen3-0.6b-r8d-it150-q4_0.gguf',
+    url: '',
+    contextSize: 8192,
+    chatTemplate: presetById('qwen3').template,
+    sizeBytes: 381565920,
+    sha256: 'a977c181c3af6aa49991d927e66256fba77502af76bf42291109e3c3c4b2a550',
+    remoteAssistant: true,
+    usesRouter: false,
+    modelTools: true,
+    temperature: 0,
+    relevantMemory: false,
+    toolWording: 'h3d',
+    callGuards: 'correct',
+    historyAsRun: true,
+    guidedToolCalls: true,
+    promptOrder: 'cache',
+    guardRetry: true,
+    // Pre-warmed states made on the S20 by the RN example (same prompt); url empty until uploaded and verified.
+    prebuiltStates: {
+      'en': PrebuiltState(
+        url: '',
+        sha256: 'ae8ec4f6ce359d171faddc31d2195af8da4cf5b8b66e2d64fc0630058b58a6d9',
+        sizeBytes: 426699589,
+      ),
+      'pt-BR': PrebuiltState(
+        url: '',
+        sha256: 'e5fc93e1a3af51741a7748125452ef89e166b97f08aee58d7249575830d8007d',
+        sizeBytes: 429681893,
       ),
     },
   ),
