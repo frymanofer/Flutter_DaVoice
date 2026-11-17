@@ -19,7 +19,7 @@ This repo demonstrates how to combine:
 - `flutter_wake_word` for wake word detection and speaker verification
 - a simple Gemini-backed voice assistant flow for spoken replies
 
-The runnable Flutter app lives in [`example/`](example/).
+The runnable Flutter app lives in [`example/`](example/). Step-by-step guides: [example/englishHowTo.md](example/englishHowTo.md) (English) and [example/portugueseHowTo.md](example/portugueseHowTo.md) (Português).
 
 This repository shows how to build a full Flutter voice AI experience with DaVoice. Instead of stitching together unrelated mobile voice packages that often conflict around microphones, audio routing, speech sessions, interruptions, and iOS behavior, this example is built around a coordinated voice pipeline:
 

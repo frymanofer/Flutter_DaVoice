@@ -5,6 +5,7 @@ import 'package:flutter_davoice_llm/flutter_davoice_llm.dart';
 
 import '../flow/app_language.dart';
 import 'car_state.dart';
+import 'car_undo.dart';
 import 'positions.dart';
 
 // The DaVoice Car tools for the agent (port of the RN example's src/car/carTools.ts): definitions from assets/car/*.json (the same
@@ -558,29 +559,54 @@ final Map<String, _Outcome Function(_Args)> _handlers = {
   },
 };
 
+/// Whether car results carry their undo (core 2026-11-14, configure "undo"): set by the LLM service for models with `undo`
+/// (an older core would show it to the model).
+bool carUndoResults = false;
+
+/// Car tools that only read (nothing to undo, and their failure is not "the last action"). As the RN example.
+const _readOnlyCarTools = {'get_vehicle_status', 'get_trip_eta', 'find_along_route'};
+
 /// Runs one tool call (the handler the agent calls); returns a ToolReply when the app says the sentence itself.
-Object? runCarTool(String name, Map<String, Object?> args) {
+/// [undoing]: the agent runs a recorded restoring call ("desfaz"): same checks, a sentence that says it was undone, nothing recorded.
+Object? runCarTool(String name, Map<String, Object?> args, {bool undoing = false}) {
   final run = _handlers[name];
   try {
     if (run == null) throw _Refused(_l("Sorry, this car doesn't have that function.", 'Desculpe, este carro não tem essa função.'));
     if (_s.driving && (_notWhileDriving[name]?.call(args) ?? false)) {
       throw _Refused(_l("I can't do that while the car is moving.", 'Não posso fazer isso com o carro em movimento.'));
     }
+    // vehicle policy: an undo never unlocks the car while it moves
+    if (undoing && name == 'unlock_car' && _s.driving) {
+      throw _Refused(_l("I can't unlock the doors while the car is moving.", 'Não posso destrancar as portas com o carro em movimento.'));
+    }
+    final before = carUndoResults && !undoing ? carSnapshot(_s) : null;
     final out = run(args);
     car.record(name, args, out.summary);
     // ignore: avoid_print
     print('[Car] $name ${jsonEncode(args)} -> ${out.summary}');
-    if (out.say != null) return ToolReply({'ok': true, ...out.result}, out.say!);
-    final status = out.result['status'];
-    if (status is String && status.startsWith('Done: ')) return ToolReply({'ok': true, ...out.result}, '${cap(out.summary)}.');
-    return {'ok': true, ...out.result};
+    final result = <String, Object?>{...out.result};
+    if (before != null) {
+      final undo = carRestoreCalls(before, carSnapshot(_s));
+      if (undo != null) result['undo'] = undo;
+    }
+    String? say = out.say;
+    if (undoing && say != null) say = _l('Undone. $say', 'Desfeito. $say');
+    if (say != null) return ToolReply({'ok': true, ...result}, say);
+    final status = result['status'];
+    if (status is String && status.startsWith('Done: ')) {
+      return ToolReply({'ok': true, ...result}, undoing ? _l('Undone. ${cap(out.summary)}.', 'Desfeito. ${cap(out.summary)}.') : '${cap(out.summary)}.');
+    }
+    return {'ok': true, ...result};
   } on _Refused catch (r) {
     car.record(name, args, r.message, ok: false, blocked: r.message);
     // ignore: avoid_print
     print('[Car] REFUSED $name ${jsonEncode(args)}: ${r.message}');
     // Said by the app, turn ends: the model gets no chance to "fix" it with another action. Nothing changed in the car.
     final text = cap(r.message);
-    return ToolReply({'ok': false, 'refused': r.message},
+    // undo (core g29zk): a state-changing call that did not go through is still the last action, so "desfaz" right after it says
+    // nothing was done instead of restoring an older action ({"ok": false} + "undo": false)
+    final failedUndo = carUndoResults && !undoing && !_readOnlyCarTools.contains(name);
+    return ToolReply({'ok': false, 'refused': r.message, if (failedUndo) 'undo': false},
         RegExp(r'[.?!]$').hasMatch(text) ? text : _l("I didn't do that: ${r.message}.", 'Não fiz isso: ${r.message}.'));
   }
 }
@@ -616,7 +642,7 @@ List<ToolDefinition> carTools({String profile = 'vw_demo', String wording = 'v1'
           description: t['description'] as String,
           inputSchema: Map<String, Object?>.from(t['inputSchema'] as Map),
           execution: t['execution'] == null ? null : Map<String, Object?>.from(t['execution'] as Map),
-          handler: (args, context) => runCarTool(t['name'] as String, args),
+          handler: (args, context) => runCarTool(t['name'] as String, args, undoing: context['undo'] == true),
         ),
   ];
 }

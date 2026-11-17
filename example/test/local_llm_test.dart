@@ -203,7 +203,7 @@ void main() {
 
     test("a model's pre-warmed state is restored on the first start and not saved again", () async {
       final model = await service.store.selectedModel();
-      expect(model.prebuiltStates, isNotEmpty, reason: "the car demo's model (r4b) ships pre-warmed states");
+      expect(model.prebuiltStates, isNotEmpty, reason: "the car demo's model (g3c_it3639) ships pre-warmed states");
       final prebuilt = File(await service.store.prebuiltStatePath(model, 'en'));
       await prebuilt.writeAsString('state');
       await service.warmUp();

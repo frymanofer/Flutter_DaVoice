@@ -33,6 +33,24 @@ class LocalLlmModelStore {
 
   Future<File> _registryFile() async => File('${(await _storageDir()).path}/model_registry.json');
 
+  /// The car demo's minimum confidence for a local action (0 = off, the default); its own small file next to the registry.
+  Future<double> localConfidence() async {
+    try {
+      final file = File('${(await _storageDir()).path}/local_confidence.json');
+      if (await file.exists()) {
+        final v = (jsonDecode(await file.readAsString()) as Map<String, dynamic>)['min'];
+        if (v is num && v >= 0 && v <= 1) return v.toDouble();
+      }
+    } catch (_) {}
+    return 0;
+  }
+
+  Future<void> setLocalConfidence(double value) async {
+    final dir = await _storageDir();
+    if (!await dir.exists()) await dir.create(recursive: true);
+    await File('${dir.path}/local_confidence.json').writeAsString(jsonEncode({'min': value}));
+  }
+
   Future<_RegistryFile> _readRegistry() async {
     if (_cached != null) return _cached!;
     var registry = const _RegistryFile(localLlmDefaultModelId, [], 'car', {});

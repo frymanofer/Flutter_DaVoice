@@ -56,6 +56,13 @@ class RemoteAssistant {
       print('[AIChat][REMOTE] not available in this demo (the model declined)');
       return {'text': localLlmNotInDemoMessage[language] ?? localLlmNotInDemoMessage['en']};
     }
+    // The on-device model was not sure enough of its car action (Local confidence, reason "low-confidence") and no remote model is set
+    // up: nothing ran, and the user hears that this command needs the remote agent (as the RN example).
+    if (request['reason'] == 'low-confidence' && localLlmLayer2 == 'none') {
+      // ignore: avoid_print
+      print('[AIChat][REMOTE] low confidence, no remote model set up: telling the user');
+      return {'text': localLlmLowConfidenceMessage[language] ?? localLlmLowConfidenceMessage['en']};
+    }
     // No remote model set up (model_config.dart localLlmLayer2 'none'): say so instead of answering.
     if (localLlmLayer2 == 'none') {
       // ignore: avoid_print

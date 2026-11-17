@@ -25,6 +25,11 @@ class LocalLlmModelConfig {
     this.guidedToolCalls = false,
     this.promptOrder,
     this.guardRetry = false,
+    this.maxOperations = 1,
+    this.historyTurns = 0,
+    this.compactToolResults = false,
+    this.scope,
+    this.undo = false,
     this.prebuiltStates = const {},
   });
 
@@ -52,6 +57,11 @@ class LocalLlmModelConfig {
       guidedToolCalls: json['guidedToolCalls'] as bool? ?? false,
       promptOrder: json['promptOrder'] as String?,
       guardRetry: json['guardRetry'] as bool? ?? false,
+      maxOperations: (json['maxOperations'] as num?)?.toInt() ?? 1,
+      historyTurns: (json['historyTurns'] as num?)?.toInt() ?? 0,
+      compactToolResults: json['compactToolResults'] as bool? ?? false,
+      scope: (json['scope'] as Map?)?.cast<String, Object?>(),
+      undo: json['undo'] as bool? ?? false,
     );
   }
 
@@ -114,6 +124,27 @@ class LocalLlmModelConfig {
   /// close_doors), the same model reconsiders once with that tool excluded; the new call passes every guard, otherwise the user is asked.
   final bool guardRetry;
 
+  /// Agent configure "maxOperations" (core 2026-11-13, Q3, as the RN example): 2 = a request with two clear commands ("fecha os vidros
+  /// e trava o carro") runs both, one after the other, in the same session; each is decided and checked on its own words, never run
+  /// twice; a third is not done and the user hears so. Default 1. Older cores ignore the key.
+  final int maxOperations;
+
+  /// Agent configure "historyTurns" (core 2026-11-13, as the RN example): only the last N user turns in the prompt (0 = all that fit).
+  final int historyTurns;
+
+  /// Agent configure "compactToolResults" (core 2026-11-13): a tool that answered with its own sentence shows {"ok":true} in the prompt.
+  final bool compactToolResults;
+
+  /// Agent configure "scope" (core 2026-11-14, dev; as the RN example): which requests the local model gets at all. A deterministic
+  /// check of the words before the model: a straightforward car command stays local; a general request goes to the remote assistant;
+  /// an incomplete / vague / garbled one is asked again; a car function without a tool here is declined; speech not meant for the
+  /// assistant is ignored. null = off (everything goes to the model, as before). Older cores ignore the key.
+  final Map<String, Object?>? scope;
+
+  /// Agent configure "undo" (core 2026-11-14, dev): "desfaz" / "undo that" puts the car back as it was before the last request (the
+  /// car tools return how; car/car_undo.dart). Older cores ignore the key.
+  final bool undo;
+
   /// Pre-warmed KV states by app language (as the RN example's prebuiltStates): the system prompt already processed offline with
   /// this exact model file, pack, tools and settings, so the first start skips the 25-40 s warm-up. Downloaded with the model
   /// (sha256 checked); a language without one warms up on the phone as before. Only valid with promptOrder 'cache'. Built-ins only.
@@ -140,6 +171,11 @@ class LocalLlmModelConfig {
         if (guidedToolCalls) 'guidedToolCalls': true,
         if (promptOrder != null) 'promptOrder': promptOrder,
         if (guardRetry) 'guardRetry': true,
+        if (maxOperations != 1) 'maxOperations': maxOperations,
+        if (historyTurns != 0) 'historyTurns': historyTurns,
+        if (compactToolResults) 'compactToolResults': true,
+        if (scope != null) 'scope': scope,
+        if (undo) 'undo': true,
       };
 }
 
@@ -152,6 +188,8 @@ const localLlmDavoicePersonal = 'davoice-personal-agent-0.6b';
 const localLlmDavoiceAutomotiveR4b = 'davoice-automotive-agent-0.6b-r4b-it100';
 // Automotive Agent r8d_it150 (the preferred model, h3d wording; as the RN example): url empty until its R2 upload is verified.
 const localLlmDavoiceAutomotiveR8d = 'davoice-automotive-agent-0.6b-r8d-it150';
+// Automotive Agent g3c_it3639: the car demo's default since 2026-11-17 (as the RN example); r8d is the backup.
+const localLlmDavoiceAutomotiveG3c = 'davoice-automotive-agent-0.6b-g3c-it3639';
 // EXPERIMENTAL Automotive Agent candidates (2026-11-11; C3 preferred, A fallback; NOT defaults; files sideloaded for the in-app test).
 const localLlmDavoiceAutomotiveC3Exp = 'davoice-automotive-agent-0.6b-c3-auto3-h3-it300-experimental';
 const localLlmDavoiceAutomotiveAExp = 'davoice-automotive-agent-0.6b-a-auto1-h3-it1050-experimental';
@@ -179,11 +217,11 @@ final builtinLocalLlmModels = [
     temperature: 0,
     callGuards: 'correct',
   ),
-  // The car demo's model: Automotive Agent r4b_it100 (as the RN example's constants.ts): the simulated VW car's tools (h3), guards
-  // correcting / blocking + the follow-up guard, guided tool calls, the cache prompt order and pre-warmed states (en, pt-BR).
+  // Automotive Agent r4b_it100: the previous car demo model, now a BACKUP (explicit pick only; r8d below is the default since
+  // 2026-11-13, as the RN example's constants.ts). Simulated VW car tools (h3), guards, guided calls, cache order, pre-warmed states.
   LocalLlmModelConfig(
     id: localLlmDavoiceAutomotiveR4b,
-    displayName: 'DaVoice Automotive Agent 0.6B',
+    displayName: 'DaVoice Automotive Agent 0.6B (r4b, backup)',
     filename: 'davoice-automotive-qwen3-0.6b-r4b-it100-q4_0.gguf',
     url: '$_r2/auto5_r4b_it100-q4_0.gguf',
     contextSize: 8192,
@@ -216,14 +254,62 @@ final builtinLocalLlmModels = [
       ),
     },
   ),
-  // Automotive Agent r8d_it150 (as the RN example): h3d wording, the bounded guard retry; url empty until the R2 upload is verified
-  // (a file already in the models folder is used). Becomes the car demo's default with its pre-warmed states.
+  // Automotive Agent g3c_it3639: the car demo's DEFAULT since 2026-11-17 (as the RN example): same settings as r8d. R2 upload
+  // verified 2026-11-17 (HTTP 200, size + sha256 of the full download). Exactly one model is loaded; never an automatic fallback.
+  LocalLlmModelConfig(
+    id: localLlmDavoiceAutomotiveG3c,
+    displayName: 'DaVoice Automotive Agent 0.6B',
+    filename: 'davoice-automotive-qwen3-0.6b-g3c-it3639-q4_0.gguf',
+    url: '$_r2/auto16_g3c_it3639-q4_0.gguf',
+    contextSize: 6144,   // 2026-11-13 (as the RN example): same decisions as 8192 on the S20, 0.23 GB less
+    chatTemplate: presetById('qwen3').template,
+    sizeBytes: 381565920,
+    sha256: 'c39fbd65b259573d67dfb7da1935f1d0087156d7eefd97e131536a436c4d0ba8',
+    remoteAssistant: true,
+    usesRouter: false,
+    modelTools: true,
+    temperature: 0,
+    relevantMemory: false,
+    toolWording: 'h3d',
+    callGuards: 'correct',
+    historyAsRun: true,
+    guidedToolCalls: true,
+    promptOrder: 'cache',
+    guardRetry: true,
+    // two clear commands in one request run both (core 2026-11-13, Q3; older cores ignore it)
+    maxOperations: 2,
+    // latency (core 2026-11-13, as the RN example): the last 6 user turns, {"ok":true} for tools that answered with their own sentence
+    historyTurns: 6,
+    compactToolResults: true,
+    // Command scope + undo (core 2026-11-14, dev g29zh; as the RN example; older cores ignore both): only straightforward car
+    // commands reach the model (<= 10 words; up to 15 when clear; up to 22 for a clear car request such as a dual zone with a
+    // preamble); general requests go to the remote assistant, garbled / vague ones are asked again, car functions without a tool
+    // are declined, background speech is ignored. "desfaz" / "undo" restores the car's previous state (car/car_undo.dart).
+    scope: {'enabled': true, 'localMaxWords': 10, 'strictMaxWords': 15, 'hardMaxWords': 22},
+    // undo on (flutter_davoice_llm 0.0.14 carries the core with undo; as the RN example).
+    undo: true,
+    // Pre-warmed states made 2026-11-17 on the S20 by the RN example (core g29zm); R2 upload verified 2026-11-17 (size + sha256).
+    prebuiltStates: {
+      'en': PrebuiltState(
+        url: '$_r2/prewarm/g3c_it3639_prewarm_en.kvstate',
+        sha256: '75a35e15c774b9b63223b4b71e3283f6abffbf3b52e6343f16b04d9f26cd325f',
+        sizeBytes: 426699589,
+      ),
+      'pt-BR': PrebuiltState(
+        url: '$_r2/prewarm/g3c_it3639_prewarm_pt-BR.kvstate',
+        sha256: 'f794a202844afdcb754678ce092da729dbdc66377c5e39c78d81300c683f11a0',
+        sizeBytes: 429681893,
+      ),
+    },
+  ),
+  // Automotive Agent r8d_it150: the car demo's default 2026-11-13 .. 2026-11-17, now a BACKUP (explicit pick only; as the RN example): h3d wording, the bounded guard retry. R2 upload
+  // verified 2026-11-13 (HTTP 200, size + sha256 of the full download). Exactly one model is loaded; never an automatic fallback.
   LocalLlmModelConfig(
     id: localLlmDavoiceAutomotiveR8d,
-    displayName: 'DaVoice Automotive Agent 0.6B (r8d)',
+    displayName: 'DaVoice Automotive Agent 0.6B (r8d, backup)',
     filename: 'davoice-automotive-qwen3-0.6b-r8d-it150-q4_0.gguf',
-    url: '',
-    contextSize: 8192,
+    url: '$_r2/auto8_r8d_it150-q4_0.gguf',
+    contextSize: 6144,   // 2026-11-13 (as the RN example): same decisions as 8192 on the S20, 0.23 GB less
     chatTemplate: presetById('qwen3').template,
     sizeBytes: 381565920,
     sha256: 'a977c181c3af6aa49991d927e66256fba77502af76bf42291109e3c3c4b2a550',
@@ -238,15 +324,28 @@ final builtinLocalLlmModels = [
     guidedToolCalls: true,
     promptOrder: 'cache',
     guardRetry: true,
-    // Pre-warmed states made on the S20 by the RN example (same prompt); url empty until uploaded and verified.
+    // two clear commands in one request run both (core 2026-11-13, Q3; older cores ignore it)
+    maxOperations: 2,
+    // latency (core 2026-11-13, as the RN example): the last 6 user turns, {"ok":true} for tools that answered with their own sentence
+    historyTurns: 6,
+    compactToolResults: true,
+    // Command scope + undo (core 2026-11-14, dev g29zh; as the RN example; older cores ignore both): only straightforward car
+    // commands reach the model (<= 10 words; up to 15 when clear; up to 22 for a clear car request such as a dual zone with a
+    // preamble); general requests go to the remote assistant, garbled / vague ones are asked again, car functions without a tool
+    // are declined, background speech is ignored. "desfaz" / "undo" restores the car's previous state (car/car_undo.dart).
+    scope: {'enabled': true, 'localMaxWords': 10, 'strictMaxWords': 15, 'hardMaxWords': 22},
+    // undo stays OFF here until the pub.dev plugin carries core g29zi+ (this example uses the published plugin, never a local path):
+    // an older core would pass the car's {"undo": ...} result to the model. Turn on with that plugin (the RN example has it on).
+    undo: false,
+    // Pre-warmed states made on the S20 by the RN example (same prompt); R2 upload verified 2026-11-13 (size + sha256).
     prebuiltStates: {
       'en': PrebuiltState(
-        url: '',
+        url: '$_r2/prewarm/r8d_it150_prewarm_en.kvstate',
         sha256: 'ae8ec4f6ce359d171faddc31d2195af8da4cf5b8b66e2d64fc0630058b58a6d9',
         sizeBytes: 426699589,
       ),
       'pt-BR': PrebuiltState(
-        url: '',
+        url: '$_r2/prewarm/r8d_it150_prewarm_pt-BR.kvstate',
         sha256: 'e5fc93e1a3af51741a7748125452ef89e166b97f08aee58d7249575830d8007d',
         sizeBytes: 429681893,
       ),
@@ -336,7 +435,7 @@ final builtinLocalLlmModels = [
 const localLlmDefaultModelId = localLlmDavoicePersonal;
 
 /// Each Local AI Chat demo's model until the user picks another one in that demo (lib/local_llm/demo.dart).
-const localLlmDemoDefaultModel = {'calories': localLlmDavoicePersonal, 'car': localLlmDavoiceAutomotiveR4b};
+const localLlmDemoDefaultModel = {'calories': localLlmDavoicePersonal, 'car': localLlmDavoiceAutomotiveG3c};
 
 /// The car tools in the prompt: the VW Brazil demo's profile ('vw_demo') or the whole catalog ('all').
 const localLlmCarTools = 'vw_demo';
@@ -367,3 +466,13 @@ class PrebuiltState {
   final String sha256;
   final int sizeBytes;
 }
+
+/// The car demo's "Local confidence" choices (2026-11-17, as the RN example): the minimum probability the on-device model must have
+/// for a car action to run locally; below it the request goes to the remote assistant. 0 = off.
+const localLlmConfidenceChoices = [0.0, 0.8, 0.9, 0.95];
+
+/// What the user hears when a command was below the confidence minimum and no remote model is set up (localLlmLayer2 'none').
+const localLlmLowConfidenceMessage = {
+  'en': 'For this command I need a remote agent.',
+  'pt-BR': 'Para esse comando eu preciso de um agente remoto.',
+};

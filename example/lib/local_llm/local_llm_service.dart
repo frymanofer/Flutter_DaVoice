@@ -4,8 +4,11 @@ import 'dart:io';
 import 'package:flutter_davoice_llm/flutter_davoice_llm.dart';
 
 import '../agent/local_agent.dart';
+import '../car/car_state.dart';
+import '../car/car_tools.dart' show carUndoResults;
 import '../flow/app_language.dart';
 import '../speaker_verification/current_speaker.dart';
+import 'demo.dart';
 import 'model_config.dart';
 import 'model_store.dart';
 
@@ -69,6 +72,13 @@ class LocalLlmService {
 
   /// The agent, set up for [model] (as the RN example's provider.ts agentFor): chat template, remote assistant, router, model
   /// tools, memory, sampling, guards. Sent again for a new agent (a demo switch) or another model.
+  // The steering side last sent to the agent (configure "vehicle"), and to which agent.
+  String? _steeringSent;
+  DavoiceAgent? _steeringSentTo;
+  // The Local confidence last sent (configure "confidence", core 2026-11-17; older cores ignore it), and to which agent.
+  double? _confidenceSent;
+  DavoiceAgent? _confidenceSentTo;
+
   Future<DavoiceAgent> _agentFor(LocalLlmModelConfig model) async {
     final agent = await _agent();
     if (_chatTemplateFor != model.id || !identical(_configuredAgent, agent)) {
@@ -93,9 +103,33 @@ class LocalLlmService {
         'guidedToolCalls': model.guidedToolCalls,
         'promptOrder': model.promptOrder ?? 'trained',
         'guardRetry': model.guardRetry,
+        // Two operations per request (core 2026-11-13, Q3; older cores ignore it). Sent every time: the shared agent must not keep it.
+        'maxOperations': model.maxOperations,
+        // History window + compact tool results (core 2026-11-13, latency; older cores ignore them).
+        'historyTurns': model.historyTurns,
+        'compactToolResults': model.compactToolResults,
+        // Command scope + undo (core 2026-11-14; older cores ignore them). Sent every time (shared agent): off unless the model sets them.
+        'scope': model.scope ?? {'enabled': false},
+        'undo': model.undo,
       });
     }
     await _chatTemplateSet;
+    // the car's results carry their undo only when the agent uses it (an older core would show it to the model)
+    carUndoResults = model.undo;
+    // The car's steering-wheel side (core 2026-11-13, Q4; older cores ignore it): "o banco da direita" is the passenger in a left-hand-drive
+    // car and the driver in a right-hand-drive one; explicit left / right positions stay physical. Sent again when it changes.
+    final minConfidence = currentLocalDemo == 'car' ? await store.localConfidence() : 0.0;
+    if (!identical(_confidenceSentTo, agent) || _confidenceSent != minConfidence) {
+      _confidenceSentTo = agent;
+      _confidenceSent = minConfidence;
+      await agent.configure({'confidence': {'min': minConfidence}});
+    }
+    final steering = Car.instance.state.steering;
+    if (!identical(_steeringSentTo, agent) || _steeringSent != steering) {
+      _steeringSentTo = agent;
+      _steeringSent = steering;
+      await agent.configure({'vehicle': {'steering': steering}});
+    }
     return agent;
   }
 

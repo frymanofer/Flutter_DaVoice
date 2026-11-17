@@ -122,10 +122,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_davoice_llm
-      sha256: fa069a03399d34d8cce64d5b6cb96c8c4018fa3d95697b7b314f80833b6c286a
+      sha256: fed9d352126a976c8a20cc553e903b04b0bd535de02d27ea984a2a9a31a6df69
       url: "https://pub.dev"
     source: hosted
-    version: "0.0.12"
+    version: "0.0.14"
   flutter_driver:
     dependency: transitive
     description: flutter

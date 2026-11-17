@@ -307,6 +307,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   String _currentSpeechSentence = '';
   String _introScript = '';
   String _aiChatResponse = '';
+  // The last request was speech not meant for the assistant (command scope IGNORE): shown as heard, no reply box (as the RN example).
+  String? _ignoredText;
   String _lastTranscript = '';
   String _partialTranscript = '';
   String _lastWakeWord = 'Hey Coach';
@@ -337,6 +339,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   int _localModelWarmUpSeq = 0;
   // The Local AI Chat demo ('car' / 'calories') and the loading screen's stage timer (download / load / warm-up).
   String _localDemo = currentLocalDemo;
+  // The car demo's Local confidence (Off -> 0.8 -> 0.9 -> 0.95 -> Off), persisted by the model store.
+  double _localConfidence = 0;
   String _loadingStage = 'load';
   DateTime _loadingStageStartedAt = DateTime.now();
   Timer? _loadingTicker;
@@ -350,6 +354,9 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     _loadGeminiApiKey();
     _listenToSpeechEvents();
     unawaited(_refreshReadyPacks());
+    unawaited(_localLlm.store.localConfidence().then((v) {
+      if (mounted) setState(() => _localConfidence = v);
+    }));
     unawaited(_localLlm.store.demo().then((demo) {
       if (mounted) setState(() => _localDemo = demo);
     }));
@@ -1384,6 +1391,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
             'role': message['role'],
             'text': message['text'] ?? '',
             if (message['tools'] != null) 'toolMessages': jsonDecode(message['tools']!),
+            // a two-operation request (core 2026-11-13, as the RN example): replayed as its operations; older cores ignore it
+            if (message['ops'] != null) 'operationTurns': jsonDecode(message['ops']!),
           },
       ];
 
@@ -1502,6 +1511,13 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   static String _localErrorText(Object error) =>
       error is LocalLlmException ? error.message : error.toString();
 
+  void _cycleLocalConfidence() {
+    final i = localLlmConfidenceChoices.indexOf(_localConfidence);
+    final next = localLlmConfidenceChoices[(i + 1) % localLlmConfidenceChoices.length];
+    setState(() => _localConfidence = next);
+    unawaited(_localLlm.store.setLocalConfidence(next));
+  }
+
   void _showLocalModelPicker() {
     showModalBottomSheet<void>(
       context: context,
@@ -1570,6 +1586,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
 
       setState(() {
         _aiChatResponse = '';
+        _ignoredText = null;
         _currentSpeechSentence = 'Local AI is thinking...';
         _message = 'Generating local AI reply...';
         _partialTranscript = '';
@@ -1581,6 +1598,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       var pendingSentence = '';
       var spoken = Future<void>.value();
       var toolMessages = const <Map<String, Object?>>[];
+      List<Object?>? operationTurns;
       String? webSource;
       var shown = '';
       late void Function(String) speakSentence;
@@ -1635,7 +1653,21 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
             });
           }
         });
+        // Command scope IGNORE (2026-11-15 brief): background talk, not for the assistant. No reply box, nothing said, and out of the
+        // history the model sees; the finally block gives the microphone back.
+        if ((turn.json['scope'] as Map?)?['outcome'] == 'ignore' && reply.trim().isEmpty) {
+          if (_chatHistory.isNotEmpty && _chatHistory.last['role'] == 'user') _chatHistory.removeLast();
+          _log('[AIChat][LOCAL_LLM] ignored (${(turn.json['scope'] as Map)['reason'] ?? 'background'}): "$userText"');
+          if (mounted) {
+            setState(() {
+              _ignoredText = userText;
+              _message = 'Not for me: ignored.';
+            });
+          }
+          return;
+        }
         toolMessages = turn.toolMessages;
+        operationTurns = turn.json['operationTurns'] as List?;
         webSource = turn.webSearch?['source'] as String?;
       } finally {
         _localGenerationActive = false;
@@ -1648,6 +1680,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         'role': 'model',
         'text': reply,
         if (toolMessages.isNotEmpty) 'tools': jsonEncode(toolMessages),
+        if (operationTurns != null) 'ops': jsonEncode(operationTurns),
       });
       setState(() {
         _lastTranscript = '';
@@ -3513,6 +3546,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           localModelName: _localModelName,
           localModelStatus: _localModelStatus,
           onChangeLocalModel: _showLocalModelPicker,
+          localConfidence: _localConfidence,
+          onChangeLocalConfidence: _cycleLocalConfidence,
           localDemo: _localDemo,
           loadingStage: _loadingStage,
           loadingSeconds: DateTime.now().difference(_loadingStageStartedAt).inSeconds,
@@ -3524,6 +3559,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           currentSpeechSentence: _currentSpeechSentence,
           introScript: _introScript,
           aiChatResponse: _aiChatResponse,
+          ignoredText: _ignoredText,
           lastTranscript: _lastTranscript,
           partialTranscript: _partialTranscript,
           introSpeaking: _isIntroSpeaking,
@@ -3597,6 +3633,8 @@ class _HomeScreen extends StatelessWidget {
     this.localModelName = '',
     this.localModelStatus = '',
     this.onChangeLocalModel,
+    this.localConfidence = 0,
+    this.onChangeLocalConfidence,
     this.localDemo = 'car',
     this.loadingStage = 'load',
     this.loadingSeconds = 0,
@@ -3608,6 +3646,7 @@ class _HomeScreen extends StatelessWidget {
     required this.currentSpeechSentence,
     required this.introScript,
     required this.aiChatResponse,
+    this.ignoredText,
     required this.lastTranscript,
     required this.partialTranscript,
     required this.introSpeaking,
@@ -3622,6 +3661,8 @@ class _HomeScreen extends StatelessWidget {
   final String localModelName;
   final String localModelStatus;
   final VoidCallback? onChangeLocalModel;
+  final double localConfidence;
+  final VoidCallback? onChangeLocalConfidence;
   final String localDemo;
   final String loadingStage;
   final int loadingSeconds;
@@ -3633,6 +3674,8 @@ class _HomeScreen extends StatelessWidget {
   final String currentSpeechSentence;
   final String introScript;
   final String aiChatResponse;
+  /// Command scope IGNORE: the heard text, shown without a reply box.
+  final String? ignoredText;
   final String lastTranscript;
   final String partialTranscript;
   final bool introSpeaking;
@@ -3729,14 +3772,15 @@ class _HomeScreen extends StatelessWidget {
           _PromptTitle(localDemo == 'car' ? 'Car demo' : 'Calories demo'),
           if (localDemo == 'car') const CarCard() else if (calorieStore != null) CaloriesCard(store: calorieStore!),
           _InfoBlock(
-            label: 'You said${isWorking ? ' · working...' : ''}',
+            label: 'You said${isWorking ? ' · working...' : ignoredText != null ? ' · not for me (ignored)' : ''}',
             value: partialTranscript.isNotEmpty && partialTranscript != 'Listening...'
                 ? partialTranscript
                 : lastTranscript.isNotEmpty
                 ? lastTranscript
-                : 'Say the wake word, then speak.',
+                : ignoredText ?? 'Say the wake word, then speak.',
           ),
-          _InfoBlock(label: 'Reply', value: aiChatResponse.isNotEmpty ? aiChatResponse : 'The reply will appear here and be spoken.'),
+          if (ignoredText == null)
+            _InfoBlock(label: 'Reply', value: aiChatResponse.isNotEmpty ? aiChatResponse : 'The reply will appear here and be spoken.'),
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: Row(
@@ -3746,6 +3790,19 @@ class _HomeScreen extends StatelessWidget {
               ],
             ),
           ),
+          if (localDemo == 'car')
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Local confidence: ${localConfidence > 0 ? localConfidence.toStringAsFixed(2) : 'Off'}'
+                    '${localConfidence > 0 ? ' · less sure → remote agent' : ''}',
+                    style: _Styles.label,
+                  ),
+                ),
+                TextButton(onPressed: isWorking ? null : onChangeLocalConfidence, child: const Text('Change')),
+              ],
+            ),
           const SizedBox(height: 8),
           Row(
             children: [
