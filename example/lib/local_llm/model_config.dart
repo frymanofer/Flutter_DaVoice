@@ -182,13 +182,10 @@ class LocalLlmModelConfig {
 const localLlmQwen25_1_5b = 'qwen2.5-1.5b-instruct';
 // The same built-in DaVoice models as the RN example (src/local_llm/constants.ts, 2026-11-10).
 // The latest models (2026-11-12, user: every app uses the latest): the Personal Agent (ft7f2_it900) for the calories demo and the
-// Automotive Agent r4b_it100 for the car demo. The older ft7c / ft7e / ft7f2 Automotive entries were removed (a phone that had one
+// Automotive Agent (g3c_it3639) for the car demo. Older Automotive entries (ft7c, ft7e, ft7f2, r4b, r8d) were removed (a phone that had one
 // selected falls back to its demo's default, model_store.dart selectedModel).
 const localLlmDavoicePersonal = 'davoice-personal-agent-0.6b';
-const localLlmDavoiceAutomotiveR4b = 'davoice-automotive-agent-0.6b-r4b-it100';
-// Automotive Agent r8d_it150 (the preferred model, h3d wording; as the RN example): url empty until its R2 upload is verified.
-const localLlmDavoiceAutomotiveR8d = 'davoice-automotive-agent-0.6b-r8d-it150';
-// Automotive Agent g3c_it3639: the car demo's default since 2026-11-17 (as the RN example); r8d is the backup.
+// Automotive Agent g3c_it3639: the car demo's default since 2026-11-17 (as the RN example).
 const localLlmDavoiceAutomotiveG3c = 'davoice-automotive-agent-0.6b-g3c-it3639';
 // EXPERIMENTAL Automotive Agent candidates (2026-11-11; C3 preferred, A fallback; NOT defaults; files sideloaded for the in-app test).
 const localLlmDavoiceAutomotiveC3Exp = 'davoice-automotive-agent-0.6b-c3-auto3-h3-it300-experimental';
@@ -217,44 +214,7 @@ final builtinLocalLlmModels = [
     temperature: 0,
     callGuards: 'correct',
   ),
-  // Automotive Agent r4b_it100: the previous car demo model, now a BACKUP (explicit pick only; r8d below is the default since
-  // 2026-11-13, as the RN example's constants.ts). Simulated VW car tools (h3), guards, guided calls, cache order, pre-warmed states.
-  LocalLlmModelConfig(
-    id: localLlmDavoiceAutomotiveR4b,
-    displayName: 'DaVoice Automotive Agent 0.6B (r4b, backup)',
-    filename: 'davoice-automotive-qwen3-0.6b-r4b-it100-q4_0.gguf',
-    url: '$_r2/auto5_r4b_it100-q4_0.gguf',
-    contextSize: 8192,
-    chatTemplate: presetById('qwen3').template,
-    sizeBytes: 381565920,
-    sha256: '1c078e961c5f4e16ae0f667d213fa06de53f3f4bc92c9248427bdb37237bd205',
-    remoteAssistant: true,
-    usesRouter: false,
-    modelTools: true,
-    temperature: 0,
-    relevantMemory: false,
-    toolWording: 'h3',
-    callGuards: 'correct',
-    historyAsRun: true,
-    guidedToolCalls: true,
-    promptOrder: 'cache',
-    guardRetry: true,
-    // Made 2026-11-11 on the S20 by the RN example (r4b + cache order + agent_automotive pack + h3 vw_demo tools); verified on R2
-    // 2026-11-12 (HTTP 200, size + sha256). Regenerate whenever the model, pack, tools or core prompt text change.
-    prebuiltStates: {
-      'en': PrebuiltState(
-        url: '$_r2/prewarm/r4b_it100_prewarm_en.kvstate',
-        sha256: '90685bef9146b3a796b94d5ce5534b91002882cc4abe49400f1157ab7c35f3ef',
-        sizeBytes: 398482405,
-      ),
-      'pt-BR': PrebuiltState(
-        url: '$_r2/prewarm/r4b_it100_prewarm_pt-BR.kvstate',
-        sha256: '68502883de5e13438dfb116d68be2595d2c97fa6843f75955582be3e85f9990a',
-        sizeBytes: 401464709,
-      ),
-    },
-  ),
-  // Automotive Agent g3c_it3639: the car demo's DEFAULT since 2026-11-17 (as the RN example): same settings as r8d. R2 upload
+  // Automotive Agent g3c_it3639: the car demo's DEFAULT since 2026-11-17 (as the RN example). R2 upload
   // verified 2026-11-17 (HTTP 200, size + sha256 of the full download). Exactly one model is loaded; never an automatic fallback.
   LocalLlmModelConfig(
     id: localLlmDavoiceAutomotiveG3c,
@@ -298,55 +258,6 @@ final builtinLocalLlmModels = [
       'pt-BR': PrebuiltState(
         url: '$_r2/prewarm/g3c_it3639_prewarm_pt-BR.kvstate',
         sha256: 'f794a202844afdcb754678ce092da729dbdc66377c5e39c78d81300c683f11a0',
-        sizeBytes: 429681893,
-      ),
-    },
-  ),
-  // Automotive Agent r8d_it150: the car demo's default 2026-11-13 .. 2026-11-17, now a BACKUP (explicit pick only; as the RN example): h3d wording, the bounded guard retry. R2 upload
-  // verified 2026-11-13 (HTTP 200, size + sha256 of the full download). Exactly one model is loaded; never an automatic fallback.
-  LocalLlmModelConfig(
-    id: localLlmDavoiceAutomotiveR8d,
-    displayName: 'DaVoice Automotive Agent 0.6B (r8d, backup)',
-    filename: 'davoice-automotive-qwen3-0.6b-r8d-it150-q4_0.gguf',
-    url: '$_r2/auto8_r8d_it150-q4_0.gguf',
-    contextSize: 6144,   // 2026-11-13 (as the RN example): same decisions as 8192 on the S20, 0.23 GB less
-    chatTemplate: presetById('qwen3').template,
-    sizeBytes: 381565920,
-    sha256: 'a977c181c3af6aa49991d927e66256fba77502af76bf42291109e3c3c4b2a550',
-    remoteAssistant: true,
-    usesRouter: false,
-    modelTools: true,
-    temperature: 0,
-    relevantMemory: false,
-    toolWording: 'h3d',
-    callGuards: 'correct',
-    historyAsRun: true,
-    guidedToolCalls: true,
-    promptOrder: 'cache',
-    guardRetry: true,
-    // two clear commands in one request run both (core 2026-11-13, Q3; older cores ignore it)
-    maxOperations: 2,
-    // latency (core 2026-11-13, as the RN example): the last 6 user turns, {"ok":true} for tools that answered with their own sentence
-    historyTurns: 6,
-    compactToolResults: true,
-    // Command scope + undo (core 2026-11-14, dev g29zh; as the RN example; older cores ignore both): only straightforward car
-    // commands reach the model (<= 10 words; up to 15 when clear; up to 22 for a clear car request such as a dual zone with a
-    // preamble); general requests go to the remote assistant, garbled / vague ones are asked again, car functions without a tool
-    // are declined, background speech is ignored. "desfaz" / "undo" restores the car's previous state (car/car_undo.dart).
-    scope: {'enabled': true, 'localMaxWords': 10, 'strictMaxWords': 15, 'hardMaxWords': 22},
-    // undo stays OFF here until the pub.dev plugin carries core g29zi+ (this example uses the published plugin, never a local path):
-    // an older core would pass the car's {"undo": ...} result to the model. Turn on with that plugin (the RN example has it on).
-    undo: false,
-    // Pre-warmed states made on the S20 by the RN example (same prompt); R2 upload verified 2026-11-13 (size + sha256).
-    prebuiltStates: {
-      'en': PrebuiltState(
-        url: '$_r2/prewarm/r8d_it150_prewarm_en.kvstate',
-        sha256: 'ae8ec4f6ce359d171faddc31d2195af8da4cf5b8b66e2d64fc0630058b58a6d9',
-        sizeBytes: 426699589,
-      ),
-      'pt-BR': PrebuiltState(
-        url: '$_r2/prewarm/r8d_it150_prewarm_pt-BR.kvstate',
-        sha256: 'e5fc93e1a3af51741a7748125452ef89e166b97f08aee58d7249575830d8007d',
         sizeBytes: 429681893,
       ),
     },

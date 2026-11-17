@@ -110,8 +110,8 @@ with verification skipped they run (it is a demo).
 
 - **Models** (`lib/local_llm/model_config.dart`): the car demo's default is **DaVoice Automotive Agent 0.6B**
   (`localLlmDavoiceAutomotiveG3c`, checkpoint `g3c_it3639`, 382 MB, checked by sha256), with a pre-warmed state for English or
-  Brazilian Portuguese (about 430 MB), so the first start skips the about-30-second warm-up. Backups, used only when picked by
-  hand: `r8d_it150` and `r4b_it100`. The calories demo uses the Personal Agent `ft7f2_it900`. **Change** opens the model picker;
+  Brazilian Portuguese (about 430 MB), so the first start skips the about-30-second warm-up. The older Automotive models (`r8d_it150`,
+  `r4b_it100`) were removed. The calories demo uses the Personal Agent `ft7f2_it900`. **Change** opens the model picker;
   only one model is loaded at a time.
 - **Chat screen:** the car card (state and last actions), **You said**, **Reply**, **Model · Change**, **Local confidence ·
   Change** (car demo), **Reset Chat**, **Back** (to the mode choice).

@@ -111,8 +111,8 @@ ferramentas de porta (`open_door`, `unlock_car`, escopo `"door_locks"`) só roda
 
 - **Modelos** (`lib/local_llm/model_config.dart`): o padrão da demo do carro é o **DaVoice Automotive Agent 0.6B**
   (`localLlmDavoiceAutomotiveG3c`, checkpoint `g3c_it3639`, 382 MB, conferido por sha256), com um estado pré-aquecido em inglês
-  ou português do Brasil (cerca de 430 MB), para o primeiro início pular os cerca de 30 segundos de aquecimento. Reservas, usadas
-  só quando escolhidas à mão: `r8d_it150` e `r4b_it100`. A demo de calorias usa o Personal Agent `ft7f2_it900`. **Change** abre
+  ou português do Brasil (cerca de 430 MB), para o primeiro início pular os cerca de 30 segundos de aquecimento. Os modelos automotivos antigos
+  (`r8d_it150`, `r4b_it100`) foram removidos. A demo de calorias usa o Personal Agent `ft7f2_it900`. **Change** abre
   o seletor de modelos; só um modelo fica carregado por vez.
 - **Tela de conversa:** o cartão do carro (estado e últimas ações), **You said**, **Reply**, **Model · Change**, **Local
   confidence · Change** (demo do carro), **Reset Chat**, **Back** (para a escolha de modo).
