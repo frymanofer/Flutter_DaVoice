@@ -16,18 +16,20 @@ class AppLanguageInfo {
 }
 
 const appLanguageInfos = <AppLanguageInfo>[
+  // Order = quality (2026-11-19): English; Spanish, Italian, German, Dutch (some word errors); Brazilian Portuguese (kept here for
+  // VW Brazil); Greek, Swedish, Danish (a bit robotic); French, European Portuguese (more mistakes). Hebrew is hidden.
   AppLanguageInfo('en', 'English', 'en-US', 'The user speaks English. Always reply in English.'),
-  AppLanguageInfo('pt-BR', 'Português do Brasil (Brazilian Portuguese)', 'pt-BR', 'Important: always reply in Brazilian Portuguese (pt-BR). Sempre responda em português do Brasil.'),
-  AppLanguageInfo('pt-PT', 'Português de Portugal (European Portuguese)', 'pt-PT', 'Important: always reply in European Portuguese (pt-PT), never Brazilian Portuguese. Responde sempre em português de Portugal.'),
-  AppLanguageInfo('de', 'Deutsch (German)', 'de-DE', 'The user speaks German. Always reply in German.'),
-  AppLanguageInfo('el', 'Ελληνικά (Greek)', 'el-GR', 'The user speaks Greek. Always reply in Greek. Απάντα πάντα στα ελληνικά.'),
   AppLanguageInfo('es', 'Español (Spanish)', 'es-ES', 'The user speaks Spanish. Always reply in Spanish.'),
-  AppLanguageInfo('fr', 'Français (French)', 'fr-FR', 'The user speaks French. Always reply in French.'),
   AppLanguageInfo('it', 'Italiano (Italian)', 'it-IT', 'The user speaks Italian. Always reply in Italian.'),
+  AppLanguageInfo('de', 'Deutsch (German)', 'de-DE', 'The user speaks German. Always reply in German.'),
   AppLanguageInfo('nl', 'Nederlands (Dutch)', 'nl-NL', 'The user speaks Dutch. Always reply in Dutch.'),
-  AppLanguageInfo('he', 'עברית (Hebrew)', 'he-IL', 'The user speaks Hebrew. Always reply in Hebrew. ענה תמיד בעברית.', hidden: true),
-  AppLanguageInfo('da', 'Dansk (Danish)', 'da-DK', 'The user speaks Danish. Always reply in Danish. Svar altid på dansk.'),
+  AppLanguageInfo('pt-BR', 'Português do Brasil (Brazilian Portuguese)', 'pt-BR', 'Important: always reply in Brazilian Portuguese (pt-BR). Sempre responda em português do Brasil.'),
+  AppLanguageInfo('el', 'Ελληνικά (Greek)', 'el-GR', 'The user speaks Greek. Always reply in Greek. Απάντα πάντα στα ελληνικά.'),
   AppLanguageInfo('sv', 'Svenska (Swedish)', 'sv-SE', 'The user speaks Swedish. Always reply in Swedish. Svara alltid på svenska.'),
+  AppLanguageInfo('da', 'Dansk (Danish)', 'da-DK', 'The user speaks Danish. Always reply in Danish. Svar altid på dansk.'),
+  AppLanguageInfo('fr', 'Français (French)', 'fr-FR', 'The user speaks French. Always reply in French.'),
+  AppLanguageInfo('pt-PT', 'Português de Portugal (European Portuguese)', 'pt-PT', 'Important: always reply in European Portuguese (pt-PT), never Brazilian Portuguese. Responde sempre em português de Portugal.'),
+  AppLanguageInfo('he', 'עברית (Hebrew)', 'he-IL', 'The user speaks Hebrew. Always reply in Hebrew. ענה תמיד בעברית.', hidden: true),
 ];
 
 /// Every language id the app knows.

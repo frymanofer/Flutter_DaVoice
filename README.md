@@ -274,27 +274,31 @@ If you enable Gemini-backed AI chat in the example app, avoid committing a real 
 
 ## Bundled Models
 
-The example already includes model assets referenced by the app:
+The examples include the same model files as the React Native examples (byte for byte), in `assets/models/`:
 
-- Davoice TTS voice: `assets/models/model_ex_ariana_fast.dm`
-- Davoice TTS voice: `assets/models/model_ex_rich_fast.dm`
+- wake word model: `assets/models/hey_coach_model_28_22012026b.dm`
 - speaker verification model: `assets/models/sv.dm`
-- wake word model: `assets/models/hey_coach_model_28_22012026b.onnx`
+- text-to-speech, English: `assets/models/model_ex2_rich_kate.dm` with `assets/models/embedder_en.dm` (voice cloning)
+- text-to-speech, Brazilian Portuguese: `assets/models/model_ex2_portuguese_brv1.dm` with `assets/models/embedder_brv1.dm`
 
-The app currently uses the `Hey Coach` wake word model and saves speaker verification enrollment data to the app documents directory as `sv_enrollment.json`.
+The other languages are downloaded as language packs when chosen. The apps load every model from the Flutter assets on both
+Android and iOS (the iOS project also bundles the wake word and speaker verification models from `../assets/models/`, as the
+React Native examples do). The app currently uses the `Hey Coach` wake word model and saves speaker verification enrollment data
+to the app documents directory as `sv_enrollment.json`.
 
 ## Using A Custom Wake Word In This Flutter Example
 
-The wake word side of this demo is based on a bundled ONNX model. To switch to a custom wake word for this Flutter repo:
+To switch to a custom wake word:
 
 1. Contact `info@davoice.io` with the wake word phrase you want to generate.
-2. Add the generated `.onnx` model to [`example/assets/models/`](example/assets/models/).
-3. Add the same ONNX file to Android native assets under [`example/android/app/src/main/assets/`](example/android/app/src/main/assets/).
-4. Add the same ONNX file to the iOS app bundle under `example/ios/`, and make sure it is included by Xcode.
-5. Update the wake word model name returned by `_wakewordModel` in [`example/lib/main.dart`](example/lib/main.dart).
-6. Rebuild the Flutter app.
+2. Add the generated `.dm` model to [`example/assets/models/`](example/assets/models/) and list it under `assets:` in
+   [`example/pubspec.yaml`](example/pubspec.yaml).
+3. Update the wake word model name returned by `_wakewordModel` in [`example/lib/main.dart`](example/lib/main.dart).
+4. In Xcode, point the `hey_coach_model_28_22012026b.dm` reference of the Runner target at the new file.
+5. Rebuild the Flutter app.
 
-For example, if DaVoice generates `hey_sky.onnx`, update the app so `_wakewordModel` returns `hey_sky.onnx` instead of the current `hey_coach_model_28_22012026b.onnx`.
+For example, if DaVoice generates `hey_sky.dm`, update the app so `_wakewordModel` returns `assets/models/hey_sky.dm` instead of the
+current `assets/models/hey_coach_model_28_22012026b.dm`.
 
 ## Packages Used
 

@@ -1,0 +1,33 @@
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            url = uri(rootProject.project(":flutter_davoice").projectDir.resolve("libs"))
+        }
+        maven {
+            url = uri(rootProject.project(":flutter_wake_word").projectDir.resolve("libs"))
+        }
+        maven {
+            url = uri(rootProject.project(":flutter_davoice_llm").projectDir.resolve("libs"))
+        }
+    }
+}
+
+val newBuildDir: Directory =
+    rootProject.layout.buildDirectory
+        .dir("../../build")
+        .get()
+rootProject.layout.buildDirectory.value(newBuildDir)
+
+subprojects {
+    val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
+    project.layout.buildDirectory.value(newSubprojectBuildDir)
+}
+subprojects {
+    project.evaluationDependsOn(":app")
+}
+
+tasks.register<Delete>("clean") {
+    delete(rootProject.layout.buildDirectory)
+}

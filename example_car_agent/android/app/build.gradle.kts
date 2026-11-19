@@ -1,0 +1,67 @@
+plugins {
+    id("com.android.application")
+    // Keep Flutter's Gradle plugin after the Android plugin.
+    id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Flutter's current template defaults to API 24, but Davoice supports API 23.
+val davoiceMinSdk = 23
+
+android {
+    namespace = "com.davoice.flutter_davoice_example"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    defaultConfig {
+        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+        applicationId = "com.davoice.flutter_davoice_car_agent"
+        // You can update the following values to match your application needs.
+        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        minSdk = davoiceMinSdk
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
+    // The STT bias list (words_flattened.txt): the native recognizer reads it
+    // from the APK's assets, not from Flutter's; same file as iOS.
+    sourceSets {
+        getByName("main") {
+            assets.srcDir("../../assets/stt_bias_conf")
+        }
+    }
+
+    packaging {
+        jniLibs {
+            pickFirsts += setOf(
+                "lib/arm64-v8a/libc++_shared.so",
+                "lib/x86/libc++_shared.so",
+                "lib/x86_64/libc++_shared.so",
+                "lib/armeabi-v7a/libc++_shared.so",
+            )
+        }
+    }
+
+    buildTypes {
+        release {
+            // TODO: Add your own signing config for the release build.
+            // Signing with the debug keys for now, so `flutter run --release` works.
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+flutter {
+    source = "../.."
+}

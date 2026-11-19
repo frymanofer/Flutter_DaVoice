@@ -23,10 +23,18 @@ class _Outcome {
 }
 
 /// Refused by the app: nothing changes; the message is a full sentence the user hears (the turn ends there).
+/// `offer`: what a plain "yes" to the refusal's question means (the agent core runs these calls on the user's yes, without the model;
+/// 2026-11-18 phone: "Close them first?" - "Yes." ran lock_car again).
 class _Refused implements Exception {
-  _Refused(this.message);
+  _Refused(this.message, [this.offer]);
   final String message;
+  final List<Map<String, Object?>>? offer;
 }
+
+Map<String, Object?> _call(String name, [Object? door]) => {
+      'name': name,
+      'arguments': door == null ? <String, Object?>{} : <String, Object?>{'door': door},
+    };
 
 bool get _pt => currentAppLanguage == 'pt-BR';
 String _l(String en, String pt) => _pt ? pt : en;
@@ -105,9 +113,17 @@ _Outcome _lockDoors(Object? door, bool lock) {
     final open = which.where((k) => _s.doors[k] == 'open').toList();
     if (open.isNotEmpty) {
       final on = open.length == 1 ? positionName(open[0], 'door', _lang) : positionName('all', 'door', _lang);
-      throw _Refused(open.length == 1
-          ? _l("I can't lock it while ${on.text} is open. Close it first?", 'Não consigo trancar com ${on.text} ${adj('abert', on)}. Quer que eu feche primeiro?')
-          : _l("I can't lock the car while doors are open. Close them first?", 'Não consigo trancar com portas abertas. Quer que eu feche primeiro?'));
+      // yes = close what is open, then lock what was asked
+      final offer = [
+        // (the whole car asked and more than one door open: one call for all the doors, so the reply stays short)
+        if (whole && open.length > 1) _call('close_doors', 'all') else ...open.map((k) => _call('close_doors', k)),
+        _call('lock_car', door),
+      ];
+      throw _Refused(
+          open.length == 1
+              ? _l("I can't lock it while ${on.text} is open. Close it first?", 'Não consigo trancar com ${on.text} ${adj('abert', on)}. Quer que eu feche primeiro?')
+              : _l("I can't lock the car while doors are open. Close them first?", 'Não consigo trancar com portas abertas. Quer que eu feche primeiro?'),
+          offer);
     }
   }
   final stem = lock ? 'trancad' : 'destrancad';
@@ -304,10 +320,16 @@ final Map<String, _Outcome Function(_Args)> _handlers = {
     // Locked: the app asks; the model never unlocks on its own.
     final lockedNow = which.where((k) => _s.doorLocks[k] == true).toList();
     if (lockedNow.isNotEmpty) {
-      if (lockedNow.length == 4) throw _Refused(_l('The car is locked. Should I unlock it?', 'O carro está trancado. Quer que eu destranque?'));
+      // yes = unlock what is locked, then open what was asked
+      final opening = _call('open_door', a['door']);
+      if (lockedNow.length == 4) {
+        throw _Refused(_l('The car is locked. Should I unlock it?', 'O carro está trancado. Quer que eu destranque?'), [_call('unlock_car'), opening]);
+      }
       final ln = lockedNow.length == 1 ? positionName(lockedNow[0], 'door', _lang) : n;
-      throw _Refused(_l('${cap(ln.text)} ${be(ln, 'en')} locked. Should I unlock ${ln.plural ? 'them' : 'it'}?',
-          '${cap(ln.text)} ${be(ln, 'pt-BR')} ${adj('trancad', ln)}. Quer que eu destranque?'));
+      throw _Refused(
+          _l('${cap(ln.text)} ${be(ln, 'en')} locked. Should I unlock ${ln.plural ? 'them' : 'it'}?',
+              '${cap(ln.text)} ${be(ln, 'pt-BR')} ${adj('trancad', ln)}. Quer que eu destranque?'),
+          [...lockedNow.map((k) => _call('unlock_car', k)), opening]);
     }
     if (which.every((k) => _s.doors[k] == 'open')) {
       return _already(_l('${n.text} already open', '${n.text} já ${adj('abert', n)}'),
@@ -450,10 +472,27 @@ final Map<String, _Outcome Function(_Args)> _handlers = {
     return _done(seat == 'all' ? _l('sound for everyone', 'som para todos') : _l('sound focused on ${_words(seat)}', 'som focado no ${_ptSeat[seat] ?? seat}'));
   },
   'set_volume': (a) {
-    final action = _str(a['action']);
+    var action = _str(a['action']);
     final level = a['level'];
     var volume = _s.volume;
-    if (action == 'set' || (level != null && action != 'mute' && action != 'unmute')) {
+    // A step of the user's own size ("by 5", "2 notches"; 2026-11-18: "raise the volume by two" set the volume to 2):
+    //   change = the step (the agent core writes it from the user's words: execution.stepArgument in the tool definitions);
+    //   "up" with a level BELOW the current volume, or "down" with one ABOVE it, cannot be a target: it is the step.
+    final amount = _num(a['change']), target = _num(level);
+    num? step;
+    if (action != 'mute' && action != 'unmute') {
+      if (amount != null && !amount.isNaN && amount != 0) {
+        step = (amount < 0 || action == 'down') ? -amount.abs() : amount.abs();
+      } else if (target != null && !target.isNaN && action == 'up' && target > 0 && target < volume) {
+        step = target;
+      } else if (target != null && !target.isNaN && action == 'down' && target > volume) {
+        step = -target;
+      }
+    }
+    if (step != null) {
+      volume = (_s.volume + step).clamp(0, 30).round();
+      action = step > 0 ? 'up' : 'down';
+    } else if (action == 'set' || (level != null && action != 'mute' && action != 'unmute')) {
       volume = _range(level, 0, 30, _l('Volume', 'O volume')).toInt();
     } else if (action == 'up') {
       volume = (_s.volume + 3).clamp(0, 30);
@@ -464,7 +503,7 @@ final Map<String, _Outcome Function(_Args)> _handlers = {
     if (action == 'unmute' && !_s.muted) {
       return _already(_l('sound already on', 'som já ligado'), _l('The sound is already on, volume ${_s.volume}.', 'O som já está ligado, volume ${_s.volume}.'));
     }
-    if ((action == 'set' || (action != 'up' && action != 'down' && level != null)) && volume == _s.volume && !_s.muted) {
+    if (step == null && (action == 'set' || (action != 'up' && action != 'down' && level != null)) && volume == _s.volume && !_s.muted) {
       return _already(_l('volume already $volume', 'volume já em $volume'), _l('The volume is already at $volume.', 'O volume já está em $volume.'));
     }
     final muted = action == 'mute' ? true : (action == 'unmute' || action == 'up' || action == 'set') ? false : _s.muted;
@@ -606,7 +645,13 @@ Object? runCarTool(String name, Map<String, Object?> args, {bool undoing = false
     // undo (core g29zk): a state-changing call that did not go through is still the last action, so "desfaz" right after it says
     // nothing was done instead of restoring an older action ({"ok": false} + "undo": false)
     final failedUndo = carUndoResults && !undoing && !_readOnlyCarTools.contains(name);
-    return ToolReply({'ok': false, 'refused': r.message, if (failedUndo) 'undo': false},
+    final offer = r.offer;
+    return ToolReply({
+      'ok': false,
+      'refused': r.message,
+      if (failedUndo) 'undo': false,
+      if (offer != null && offer.isNotEmpty && !undoing) 'offer': {'calls': offer},
+    },
         RegExp(r'[.?!]$').hasMatch(text) ? text : _l("I didn't do that: ${r.message}.", 'Não fiz isso: ${r.message}.'));
   }
 }

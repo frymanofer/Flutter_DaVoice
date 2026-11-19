@@ -57,6 +57,9 @@ void main() {
     await tester.pumpWidget(const DavoiceExampleApp());
     expect(find.text('Choose Your Language'), findsOneWidget);
     expect(find.text('English'), findsOneWidget);
+    // The list is in quality order (pt-BR is 6th): scroll it into view first.
+    await tester.ensureVisible(find.text('Português do Brasil (Brazilian Portuguese)'));
+    await tester.pump();
     await tester.tap(find.text('Português do Brasil (Brazilian Portuguese)'));
     await tester.pump();
     for (var i = 0; i < 30 && initArgs == null; i++) {
@@ -80,6 +83,8 @@ void main() {
     await tester.pump();
     expect(find.textContaining('⬇'), findsWidgets, reason: 'download sizes on the languages that are not built in');
     expect(find.textContaining('Ελληνικά'), findsOneWidget);
+    await tester.ensureVisible(find.text('Français (French)'));
+    await tester.pump();
     await tester.tap(find.text('Français (French)'));
     for (var i = 0; i < 20; i++) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));

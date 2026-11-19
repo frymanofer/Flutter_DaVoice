@@ -1,0 +1,123 @@
+name: flutter_davoice_car_agent
+description: "DaVoice Car: the on-device Automotive Agent demo (Flutter version of the React Native example_car_agent)."
+version: 1.0.0+1
+# The following line prevents the package from being accidentally published to
+# pub.dev using `flutter pub publish`. This is preferred for private packages.
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+environment:
+  sdk: ^3.12.0
+  flutter: '>=3.47.0'
+
+# Dependencies specify other packages that your package needs in order to work.
+# To automatically upgrade your package dependencies to the latest versions
+# consider running `flutter pub upgrade --major-versions`. Alternatively,
+# dependencies can be manually updated by changing the version numbers below to
+# the latest version available on pub.dev. To see which dependencies have newer
+# versions available, run `flutter pub outdated`.
+dependencies:
+  flutter:
+    sdk: flutter
+
+  flutter_davoice: ^0.0.20
+  flutter_wake_word: ^0.0.55
+  flutter_davoice_llm: ^0.0.16  # on-device LLM + agent for Local AI Chat
+
+  crypto: ^3.0.6  # model download checksums
+  path_provider: ^2.1.5
+  permission_handler: ^12.0.1
+
+  cupertino_icons: ^1.0.8
+  cryptography: ^2.7.0
+
+dev_dependencies:
+  integration_test:
+    sdk: flutter
+  flutter_test:
+    sdk: flutter
+  # Fake platforms in test/ (flutter_davoice_llm's platform interface).
+  plugin_platform_interface: ^2.0.2
+
+  # The "flutter_lints" package below contains a set of recommended lints to
+  # encourage good coding practices. The lint set provided by the package is
+  # activated in the `analysis_options.yaml` file located at the root of your
+  # package. See that file for information about deactivating specific lint
+  # rules and activating additional ones.
+  flutter_lints: ^6.0.0
+
+# For information on the generic Dart part of this file, see the
+# following page: https://dart.dev/tools/pub/pubspec
+
+# The following section is specific to Flutter packages.
+flutter:
+
+  uses-material-design: true
+
+  assets:
+    - licensekey.txt
+    # Your own keys (Gemini, web search, USDA, MCP): config/local.config.ts, git-ignored and optional. The app falls back to the
+    # committed template config/local.config.example.ts, so a fresh clone builds and runs without it (folder entry: an absent
+    # file is fine).
+    - config/
+    - assets/bellServiceDeskPressXThree.mp3
+    - assets/cashRegisterSound.mp3
+    - assets/images/logo.jpeg
+    # The car agent's design (the React Native example_car_agent's assets/images/redesign/): the DaVoice emblem and the hood photo.
+    - assets/images/redesign/
+    # Which languages' voices are built in and which are downloaded (lib/tts/language_packs.dart).
+    - assets/language_packs.json
+    # Only the models the app loads: the built-in languages of assets/language_packs.json ("bundled": English and pt-BR),
+    # the wake word and speaker verification. The other languages are downloaded; test/language_packs_test.dart checks this list.
+    - assets/models/model_ex2_rich_kate.dm
+    - assets/models/model_ex2_portuguese_brv1.dm
+    # Voice cloning's voice encoders, per language (lib/voice_clone/voice_clone.dart).
+    - assets/models/embedder_en.dm
+    - assets/models/embedder_brv1.dm
+    - assets/models/hey_coach_model_28_22012026b.dm
+    - assets/models/sv.dm
+    - assets/stt_bias_conf/
+    # Local AI Chat's agent pack (same files as the RN example's agent/).
+    # Flutter asset folders are not recursive: every pack folder is listed (English, pt-BR, and the car demo's automotive pack).
+    - assets/agent/
+    - assets/agent/skills/calories/
+    - assets/agent/pt-BR/
+    - assets/agent/pt-BR/skills/calories/
+    - assets/agent_automotive/
+    - assets/agent_automotive/pt-BR/
+    # The simulated car's tool definitions (the same files as the RN example's src/car/*.json).
+    - assets/car/
+
+  # To add custom fonts to your application, add a fonts section here,
+  # in this "flutter" section. Each entry in this list should have a
+  # "family" key with the font family name, and a "fonts" key with a
+  # list giving the asset and other descriptors for the font. For
+  # example:
+  # fonts:
+  #   - family: Schyler
+  #     fonts:
+  #       - asset: fonts/Schyler-Regular.ttf
+  #       - asset: fonts/Schyler-Italic.ttf
+  #         style: italic
+  #   - family: Trajan Pro
+  #     fonts:
+  #       - asset: fonts/TrajanPro.ttf
+  #       - asset: fonts/TrajanPro_Bold.ttf
+  #         weight: 700
+  #
+  # For details regarding fonts from package dependencies,
+  # see https://flutter.dev/to/font-from-package
+
+  # Inter (assets/fonts, SIL Open Font License: assets/fonts/Inter-LICENSE.txt), as the React Native example_car_agent.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Inter-ExtraBold.ttf
+          weight: 800

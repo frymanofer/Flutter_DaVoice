@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'chat_template.dart';
+import 'confidence.dart';
 import 'demo.dart';
 import 'model_config.dart';
 
@@ -33,22 +34,20 @@ class LocalLlmModelStore {
 
   Future<File> _registryFile() async => File('${(await _storageDir()).path}/model_registry.json');
 
-  /// The car demo's minimum confidence for a local action (0 = off, the default); its own small file next to the registry.
-  Future<double> localConfidence() async {
+  /// The car demo's Local confidence (confidence.dart): OFF by default, threshold 0.90, fallback CLARIFY; its own small file next to the
+  /// registry. Files written on 2026-11-17 hold {"min": x} and are read as before (0 = off, > 0 = on with that minimum).
+  Future<ConfidenceSettings> localConfidence() async {
     try {
       final file = File('${(await _storageDir()).path}/local_confidence.json');
-      if (await file.exists()) {
-        final v = (jsonDecode(await file.readAsString()) as Map<String, dynamic>)['min'];
-        if (v is num && v >= 0 && v <= 1) return v.toDouble();
-      }
+      if (await file.exists()) return ConfidenceSettings.parse(jsonDecode(await file.readAsString()));
     } catch (_) {}
-    return 0;
+    return ConfidenceSettings.defaults;
   }
 
-  Future<void> setLocalConfidence(double value) async {
+  Future<void> setLocalConfidence(ConfidenceSettings value) async {
     final dir = await _storageDir();
     if (!await dir.exists()) await dir.create(recursive: true);
-    await File('${dir.path}/local_confidence.json').writeAsString(jsonEncode({'min': value}));
+    await File('${dir.path}/local_confidence.json').writeAsString(jsonEncode(value.toJson()));
   }
 
   Future<_RegistryFile> _readRegistry() async {

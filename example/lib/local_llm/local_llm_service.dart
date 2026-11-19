@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_davoice_llm/flutter_davoice_llm.dart';
@@ -8,6 +9,7 @@ import '../car/car_state.dart';
 import '../car/car_tools.dart' show carUndoResults;
 import '../flow/app_language.dart';
 import '../speaker_verification/current_speaker.dart';
+import 'confidence.dart';
 import 'demo.dart';
 import 'model_config.dart';
 import 'model_store.dart';
@@ -76,7 +78,7 @@ class LocalLlmService {
   String? _steeringSent;
   DavoiceAgent? _steeringSentTo;
   // The Local confidence last sent (configure "confidence", core 2026-11-17; older cores ignore it), and to which agent.
-  double? _confidenceSent;
+  String? _confidenceSent;
   DavoiceAgent? _confidenceSentTo;
 
   Future<DavoiceAgent> _agentFor(LocalLlmModelConfig model) async {
@@ -118,11 +120,27 @@ class LocalLlmService {
     carUndoResults = model.undo;
     // The car's steering-wheel side (core 2026-11-13, Q4; older cores ignore it): "o banco da direita" is the passenger in a left-hand-drive
     // car and the driver in a right-hand-drive one; explicit left / right positions stay physical. Sent again when it changes.
-    final minConfidence = currentLocalDemo == 'car' ? await store.localConfidence() : 0.0;
-    if (!identical(_confidenceSentTo, agent) || _confidenceSent != minConfidence) {
+    // Local confidence (core 2026-11-19, configure "confidence" {enabled, min, fallback, messages}; confidence.dart): the car demo's
+    // setting, off in the other demo. Sent when it changes: no model reload, no new session. Safety (core 2026-11-19, configure "safety"):
+    // never-act + "which seat?" stay on whatever the confidence setting; only their sentences follow the app's language.
+    final language = currentAppLanguage;
+    final confidence = currentLocalDemo == 'car' ? await store.localConfidence() : ConfidenceSettings.defaults.copyWith(enabled: false);
+    final confidenceKey = '${jsonEncode(confidence.toJson())}|$language';
+    if (!identical(_confidenceSentTo, agent) || _confidenceSent != confidenceKey) {
       _confidenceSentTo = agent;
-      _confidenceSent = minConfidence;
-      await agent.configure({'confidence': {'min': minConfidence}});
+      _confidenceSent = confidenceKey;
+      final pt = language.toLowerCase().startsWith('pt');
+      await agent.configure({
+        'confidence': toCoreConfidence(confidence, language),
+        'safety': {
+          'neverAct': true,
+          'seatAsk': true,
+          'messages': {
+            'whichSeat': pt ? 'Qual banco: o seu, o do carona ou os dois?' : "Which seat: yours, the passenger's, or both?",
+            'unsupported': localLlmNotInDemoMessage[language] ?? localLlmNotInDemoMessage['en'],
+          },
+        },
+      });
     }
     final steering = Car.instance.state.steering;
     if (!identical(_steeringSentTo, agent) || _steeringSent != steering) {

@@ -16,6 +16,7 @@ import 'speaker_verification/current_speaker.dart';
 import 'flow/narration.dart';
 import 'flow/startup_narration.dart';
 import 'flow/transcript.dart';
+import 'local_llm/confidence.dart';
 import 'local_llm/local_llm_service.dart';
 import 'local_llm/model_config.dart';
 import 'local_llm/model_picker.dart';
@@ -339,8 +340,11 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   int _localModelWarmUpSeq = 0;
   // The Local AI Chat demo ('car' / 'calories') and the loading screen's stage timer (download / load / warm-up).
   String _localDemo = currentLocalDemo;
-  // The car demo's Local confidence (Off -> 0.8 -> 0.9 -> 0.95 -> Off), persisted by the model store.
-  double _localConfidence = 0;
+  // The car demo's Local confidence (core 2026-11-19; local_llm/confidence.dart): on / off, threshold 0..1 in 0.05 steps, fallback
+  // clarify / remote / decline; persisted by the model store, sent to the agent before the next turn (no reload, no new session).
+  ConfidenceSettings _localConfidence = ConfidenceSettings.defaults;
+  // The last request's outcome and the model's score for its action (core 2026-11-19).
+  TurnInfo _lastTurn = const TurnInfo();
   String _loadingStage = 'load';
   DateTime _loadingStageStartedAt = DateTime.now();
   Timer? _loadingTicker;
@@ -1511,9 +1515,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   static String _localErrorText(Object error) =>
       error is LocalLlmException ? error.message : error.toString();
 
-  void _cycleLocalConfidence() {
-    final i = localLlmConfidenceChoices.indexOf(_localConfidence);
-    final next = localLlmConfidenceChoices[(i + 1) % localLlmConfidenceChoices.length];
+  void _changeLocalConfidence(ConfidenceSettings next) {
     setState(() => _localConfidence = next);
     unawaited(_localLlm.store.setLocalConfidence(next));
   }
@@ -1627,6 +1629,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         // president...") and looks up unknown foods online; meanwhile it sends
         // a short filler to say, so the wait isn't silent. Fillers aren't part
         // of the reply or the history.
+        if (_lastTurn.outcome != null) setState(() => _lastTurn = const TurnInfo());
         final turn = await _localLlm.generateReplyStream(history, userText, (delta) {
           if (!_isSpeechUiEpochCurrent(epoch)) return;
           reply += delta;
@@ -1655,6 +1658,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         });
         // Command scope IGNORE (2026-11-15 brief): background talk, not for the assistant. No reply box, nothing said, and out of the
         // history the model sees; the finally block gives the microphone back.
+        if (_isSpeechUiEpochCurrent(epoch)) setState(() => _lastTurn = TurnInfo.read(turn.json));
         if ((turn.json['scope'] as Map?)?['outcome'] == 'ignore' && reply.trim().isEmpty) {
           if (_chatHistory.isNotEmpty && _chatHistory.last['role'] == 'user') _chatHistory.removeLast();
           _log('[AIChat][LOCAL_LLM] ignored (${(turn.json['scope'] as Map)['reason'] ?? 'background'}): "$userText"');
@@ -3547,7 +3551,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           localModelStatus: _localModelStatus,
           onChangeLocalModel: _showLocalModelPicker,
           localConfidence: _localConfidence,
-          onChangeLocalConfidence: _cycleLocalConfidence,
+          onChangeLocalConfidence: _changeLocalConfidence,
+          lastTurn: _lastTurn,
           localDemo: _localDemo,
           loadingStage: _loadingStage,
           loadingSeconds: DateTime.now().difference(_loadingStageStartedAt).inSeconds,
@@ -3633,8 +3638,9 @@ class _HomeScreen extends StatelessWidget {
     this.localModelName = '',
     this.localModelStatus = '',
     this.onChangeLocalModel,
-    this.localConfidence = 0,
+    this.localConfidence = ConfidenceSettings.defaults,
     this.onChangeLocalConfidence,
+    this.lastTurn = const TurnInfo(),
     this.localDemo = 'car',
     this.loadingStage = 'load',
     this.loadingSeconds = 0,
@@ -3661,8 +3667,9 @@ class _HomeScreen extends StatelessWidget {
   final String localModelName;
   final String localModelStatus;
   final VoidCallback? onChangeLocalModel;
-  final double localConfidence;
-  final VoidCallback? onChangeLocalConfidence;
+  final ConfidenceSettings localConfidence;
+  final ValueChanged<ConfidenceSettings>? onChangeLocalConfidence;
+  final TurnInfo lastTurn;
   final String localDemo;
   final String loadingStage;
   final int loadingSeconds;
@@ -3781,6 +3788,8 @@ class _HomeScreen extends StatelessWidget {
           ),
           if (ignoredText == null)
             _InfoBlock(label: 'Reply', value: aiChatResponse.isNotEmpty ? aiChatResponse : 'The reply will appear here and be spoken.'),
+          if (localDemo == 'car' && !isWorking && lastTurn.line.isNotEmpty)
+            Padding(padding: const EdgeInsets.only(top: 4), child: Text(lastTurn.line, style: _Styles.label)),
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: Row(
@@ -3791,17 +3800,10 @@ class _HomeScreen extends StatelessWidget {
             ),
           ),
           if (localDemo == 'car')
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Local confidence: ${localConfidence > 0 ? localConfidence.toStringAsFixed(2) : 'Off'}'
-                    '${localConfidence > 0 ? ' · less sure → remote agent' : ''}',
-                    style: _Styles.label,
-                  ),
-                ),
-                TextButton(onPressed: isWorking ? null : onChangeLocalConfidence, child: const Text('Change')),
-              ],
+            ConfidenceControls(
+              value: localConfidence,
+              onChanged: onChangeLocalConfidence ?? (_) {},
+              disabled: isWorking || onChangeLocalConfidence == null,
             ),
           const SizedBox(height: 8),
           Row(
