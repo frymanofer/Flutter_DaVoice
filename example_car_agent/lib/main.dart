@@ -1528,6 +1528,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           reply =
               'The on-device model, ${model.displayName}, is still downloading. It is ${progress.group(1)} percent done. Please ask me again when it is ready.';
         } else {
+          // No load running for it (2026-11-24, RN S20: the loader's state was cleared while the screen said "Ready"): load it again.
+          if (_localLlm.activeModelId != model.id) _warmUpLocalModel();
           reply =
               'The on-device model, ${model.displayName}, is still loading. Please ask me again in a moment.';
         }
@@ -2919,7 +2921,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
               tuned: !isBasicLanguage(l.id),
             ),
         ];
-        return LanguageHoodScreen(languages: languages, defaultId: 'pt-BR', onInstall: (id) => unawaited(_selectLanguage(id)));
+        return LanguageHoodScreen(languages: languages, defaultId: 'en', onInstall: (id) => unawaited(_selectLanguage(id)));
       case _Stage.languageDownload:
         final language = _packLanguage ?? 'en';
         final label = appLanguageInfo(language).label.split(' (').first;

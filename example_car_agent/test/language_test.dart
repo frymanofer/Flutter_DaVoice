@@ -57,7 +57,10 @@ void main() {
     await tester.pumpWidget(const DavoiceExampleApp());
     expect(find.text('CHOOSE YOUR LANGUAGE'), findsOneWidget);
     expect(find.text('EN • English', findRichText: true), findsOneWidget);
-    // Brazilian Portuguese is selected by default (as the React Native example_car_agent): its button continues.
+    // English is selected by default (as the React Native example_car_agent, 2026-11-24); Brazilian Portuguese is second.
+    expect(find.text('Continue with English'), findsOneWidget);
+    await tester.tap(find.text('PT-BR • Português', findRichText: true));
+    await tester.pump();
     await tester.tap(find.text('Continue with Português do Brasil'));
     await tester.pump();
     for (var i = 0; i < 30 && initArgs == null; i++) {

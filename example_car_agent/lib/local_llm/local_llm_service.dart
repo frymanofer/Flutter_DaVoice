@@ -193,6 +193,9 @@ class LocalLlmService {
   /// True once [modelId] has finished loading and is the engine's model.
   bool isModelReady(String modelId) => _activeLoadDone && _activeModelId == modelId;
 
+  /// The model the engine has or is loading, if any.
+  String? get activeModelId => _activeModelId;
+
   /// Downloads (if needed) and loads the selected model, then prefills the
   /// system prompt, so the first turn pays for none of it. Call when Local AI
   /// Chat opens and after the user picks another model, never mid-turn.
