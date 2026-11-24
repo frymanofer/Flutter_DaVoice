@@ -67,7 +67,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(currentAppLanguage, 'pt-BR');
-    expect(initArgs?['model'], 'assets/models/model_ex2_portuguese_brv1.dm');
+    expect(initArgs?['model'], 'assets/models/model_ex2_portuguese_brv3.dm');
     expect(initArgs?['locale'], 'pt-BR');
     init.complete();
     await tester.pumpWidget(const SizedBox());

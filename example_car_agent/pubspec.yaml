@@ -70,10 +70,10 @@ flutter:
     # Only the models the app loads: the built-in languages of assets/language_packs.json ("bundled": English and pt-BR),
     # the wake word and speaker verification. The other languages are downloaded; test/language_packs_test.dart checks this list.
     - assets/models/model_ex2_rich_kate.dm
-    - assets/models/model_ex2_portuguese_brv1.dm
+    - assets/models/model_ex2_portuguese_brv3.dm
     # Voice cloning's voice encoders, per language (lib/voice_clone/voice_clone.dart).
     - assets/models/embedder_en.dm
-    - assets/models/embedder_brv1.dm
+    - assets/models/embedder_brv3.dm
     - assets/models/hey_davoice_model_28_06042026.dm
     - assets/models/sv.dm
     - assets/stt_bias_conf/

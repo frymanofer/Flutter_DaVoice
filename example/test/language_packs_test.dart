@@ -48,7 +48,7 @@ void main() {
   test('a downloaded language uses the downloaded files once they are complete', () async {
     expect(isDownloadableLanguage('fr'), isTrue);
     expect(isDownloadableLanguage('pt-BR'), isFalse);
-    expect(languageFile('pt-BR', 'model'), 'assets/models/model_ex2_portuguese_brv1.dm');
+    expect(languageFile('pt-BR', 'model'), 'assets/models/model_ex2_portuguese_brv3.dm');
     expect(await isLanguagePackReady('fr'), isFalse);
     expect(languageFile('fr', 'model'), isNull);
     setCurrentAppLanguage('fr');
