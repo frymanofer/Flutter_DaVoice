@@ -236,7 +236,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   final _licenseController = TextEditingController();
   final _ttsController = TextEditingController(
     text:
-        'Hello Guys, I am one of the coaches in the Lunafit app. I love helping people reach their fitness goals.',
+        'Hello, I am one of the DaVoice voices. Type any text here and I will read it out loud, right on your phone.',
   );
 
   KeyWordFlutterPC? _wakeword;
