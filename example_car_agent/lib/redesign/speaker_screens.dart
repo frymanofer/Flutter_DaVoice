@@ -16,6 +16,7 @@ class SpeakerScreen extends StatelessWidget {
     required this.onUseSaved,
     required this.onCreate,
     required this.onSkip,
+    this.notice = '',
   });
   final bool hasSaved;
   final bool busy;
@@ -23,27 +24,8 @@ class SpeakerScreen extends StatelessWidget {
   final VoidCallback onCreate;
   final VoidCallback onSkip;
 
-  Widget _point(String text) => Padding(
-    padding: const EdgeInsets.only(bottom: 12),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Icon(Icons.check_rounded, size: 18, color: C.mint),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            text,
-            style: inter(
-              15,
-              FontWeight.w500,
-              const Color(0xFFE5E7EB),
-              height: 20,
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
+  /// Shown above the buttons after a recording failed (svEnrollmentFailedNotice).
+  final String notice;
 
   @override
   Widget build(BuildContext context) => PanelScreen(
@@ -59,26 +41,17 @@ class SpeakerScreen extends StatelessWidget {
                   padding: EdgeInsets.fromLTRB(24, 30, 24, 18),
                   eyebrow: 'Step 3 of 5',
                   title: 'Isolate your voice?',
-                  subtitle:
-                      'The agent learns your voice and then answers only you.',
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(28, 0, 28, 14),
-                  child: Column(
-                    children: [
-                      _point(
-                        'Passengers, the radio and other voices are ignored',
-                      ),
-                      _point('Takes about 15 seconds: 5 short samples'),
-                      _point('Your voice signature never leaves this phone'),
-                    ],
-                  ),
+                  subtitle: 'The agent answers only you.',
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (notice.isNotEmpty) ...[
+                        Text(notice, style: inter(14, FontWeight.w500, C.warning2)),
+                        const SizedBox(height: 14),
+                      ],
                       if (hasSaved) ...[
                         PrimaryButton(
                           height: 64,
@@ -104,17 +77,6 @@ class SpeakerScreen extends StatelessWidget {
                           ),
                           onPressed: busy ? null : onCreate,
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'RECOMMENDED',
-                          textAlign: TextAlign.center,
-                          style: inter(
-                            12,
-                            FontWeight.w600,
-                            C.mint,
-                            letterSpacing: 12 * 0.08,
-                          ),
-                        ),
                       ],
                     ],
                   ),
@@ -127,7 +89,7 @@ class SpeakerScreen extends StatelessWidget {
           children: [
             Expanded(
               child: SecondaryButton(
-                label: 'Skip · answer any voice',
+                label: 'Skip',
                 onPressed: busy ? null : onSkip,
               ),
             ),
@@ -181,8 +143,6 @@ class _SignatureScreenState extends State<SignatureScreen>
           const Heading(
             eyebrow: 'Step 3 of 5 · Voice signature',
             title: 'Read this aloud',
-            subtitle:
-                'Use your natural voice. The next sentence appears by itself.',
           ),
           // The sentence is the screen's main message: the brightest card, the largest text.
           Container(
@@ -442,11 +402,7 @@ class _VoiceTestScreenState extends State<VoiceTestScreen> {
         hasResult &&
         (widget.isMatch! ||
             DateTime.now().difference(_lastMatchAt) < _matchHold);
-    final detail = match
-        ? 'The agent recognises this voice.'
-        : hasResult
-        ? 'No match right now. It stays like this for silence, noise and other voices.'
-        : 'Say something to test your voice signature.';
+    final detail = !match && hasResult ? 'No match' : '';
     return PanelScreen(
       leftTrace: true,
       doubleTrace: true,
@@ -456,8 +412,7 @@ class _VoiceTestScreenState extends State<VoiceTestScreen> {
             padding: const EdgeInsets.fromLTRB(24, 22, 24, 10),
             eyebrow: 'Step 3 of 5 · Voice signature',
             title: 'Test your voice',
-            subtitle:
-                'Say “${widget.wakePhrase}” or any sentence. Then let someone else try.',
+            subtitle: 'Say anything. Then let someone else try.',
           ),
           Expanded(
             child: Semantics(
@@ -543,7 +498,7 @@ class _VoiceTestScreenState extends State<VoiceTestScreen> {
                 child: PrimaryButton(
                   label: widget.canContinue
                       ? 'Continue'
-                      : 'Waiting for the first result…',
+                      : 'Waiting…',
                   onPressed: widget.canContinue ? widget.onContinue : null,
                 ),
               ),

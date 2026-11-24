@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/services.dart' show rootBundle;
 
 import '../flow/app_language.dart';
+import '../car/basic_language.dart';
 
 // The agent packs: Local AI Chat's behavior as data (the same files as the RN example's agent/ and agent_automotive/). agent.json
 // holds the persona, prompt templates, web-search rules and filler phrases; each skill folder holds a skill's tools, routing
@@ -35,7 +36,51 @@ class AgentPack {
 final Map<String, AgentPack> _packs = {};
 
 /// The pack of the app's language (English for a language without its own pack).
-AgentPack get agentPack => _packs[currentAppLanguage] ?? _packs['en']!;
+AgentPack get agentPack => _packs[currentAppLanguage] ?? _basicPack(currentAppLanguage) ?? _packs['en']!;
+
+/// A Basic language (car/basic_language.dart: not tuned): the English car pack (the instructions the model was trained with) with the
+/// sentences the user hears translated (basic_languages.json "pack"), as the RN example's AgentPack.ts. Built once per language.
+final Map<String, AgentPack> _basicPacks = {};
+AgentPack? _basicPack(String language) {
+  final t = basicPackTexts(language);
+  final en = _packs['en'];
+  if (t == null || t.isEmpty || en == null) return null;
+  return _basicPacks.putIfAbsent(language, () {
+    final pack = jsonDecode(jsonEncode(en.automotive)) as Json;
+    String? str(String k) => t[k] is String ? t[k] as String : null;
+    List<String>? list(String k) => t[k] is List ? strings(t[k]) : null;
+    final prompts = (pack['prompts'] as Json?) ?? <String, Object?>{};
+    for (final k in const ['noReply', 'notDoneRest', 'done', 'failed', 'notConfirmed', 'notAuthorized', 'unsupported', 'invalidArgs',
+      'guardConflict', 'outOfRange', 'outOfRangeAsk', 'scopeClarify', 'scopeUnsupported', 'scopeNoRemote']) {
+      if (str(k) != null) prompts[k] = str(k);
+    }
+    pack['prompts'] = prompts;
+    // "ok" is said in every language: the English "Okay!" (fixed reply "ack", 2026-11-21) is for the tuned languages only
+    final fixed = pack['fixedReplies'];
+    if (fixed is List) pack['fixedReplies'] = [for (final r in fixed) if (!(r is Map && r['id'] == 'ack')) r];
+    final remote = pack['remote'];
+    if (remote is Json) {
+      if (str('remoteFailed') != null) remote['failed'] = str('remoteFailed');
+      remote['errors'] = {
+        ...((remote['errors'] as Json?) ?? const {}),
+        if (str('remoteOffline') != null) 'offline': str('remoteOffline'),
+        if (str('remoteBusy') != null) 'busy': str('remoteBusy'),
+        if (str('remoteTimeout') != null) 'timeout': str('remoteTimeout'),
+        if (str('remoteUnavailable') != null) 'unavailable': str('remoteUnavailable'),
+      };
+      if (list('remoteFillers') != null) remote['fillers'] = list('remoteFillers');
+    }
+    if (list('remoteFillers') != null) pack['onlineToolFillers'] = list('remoteFillers');
+    final fillers = (pack['webSearch'] as Json?)?['fillers'];
+    if (fillers is Json) {
+      if (list('searchFillers') != null) fillers['general'] = list('searchFillers');
+      if (list('searchFailed') != null) fillers['searchFailed'] = list('searchFailed');
+      fillers['topics'] = <Object?>[];   // topic fillers are English sentences
+    }
+    return AgentPack(agent: en.agent, caloriesSkill: en.caloriesSkill, caloriesFoods: en.caloriesFoods, automotive: pack);
+  });
+}
+
 
 /// Loads the packs from the app's assets, or with [readFile] (tests).
 Future<void> loadAgentPacks({Future<String> Function(String path)? readFile}) async {

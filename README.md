@@ -302,10 +302,10 @@ current `assets/models/hey_coach_model_28_22012026b.dm`.
 
 ## Packages Used
 
-Reference docs used while shaping this example README:
+Package documentation:
 
-- `../FlutterPubDavoicePrivate/README.md`
-- `../flutter_wake_word_lib/README.md`
+- [flutter_davoice on pub.dev](https://pub.dev/packages/flutter_davoice)
+- [flutter_wake_word on pub.dev](https://pub.dev/packages/flutter_wake_word)
 
 Published packages used by this app:
 
@@ -356,8 +356,9 @@ This repository is relevant for search intents such as:
 
 ## Related Repositories
 
-- DaVoice Flutter plugin: <https://github.com/frymanofer/FlutterPubDavoicePrivate>
-- Wake word Flutter plugin: <https://github.com/frymanofer/flutter_wake_word_lib>
+- DaVoice Flutter plugin: <https://pub.dev/packages/flutter_davoice>
+- Wake word Flutter plugin: <https://pub.dev/packages/flutter_wake_word>
+- Flutter wake word example: <https://github.com/frymanofer/Flutter_WakeWordDetection>
 
 ## Learn More
 
@@ -365,6 +366,12 @@ This repository is relevant for search intents such as:
 - Documentation: <https://davoice.io/docs>
 - Wake word product page: <https://davoice.io/wake-word>
 - Speaker recognition product page: <https://davoice.io/speaker-recognition>
+- Flutter voice AI agent tutorial (on-device LLM): <https://davoice.io/voice-agent-guide/flutter>
+- On-device voice-to-voice AI agent SDK: <https://davoice.io/voice-agent-sdk>
+- Wake word benchmark, two independent customer studies: <https://davoice.io/wake-word-benchmark>
+- On-device speech to text SDK: <https://davoice.io/speech-to-text>
+- On-device text to speech SDK and voice cloning: <https://davoice.io/text-to-speech>
+- Free online text to speech (free and unlimited, no sign-up, no login, no subscription; MP3 download): <https://davoice.io/free-text-to-speech>
 - Pricing: <https://davoice.io/pricing>
 - Contact: <https://davoice.io/contact-us>
 - Voice isolation with STT video: <https://www.youtube.com/watch?v=uYpaCXAvjew&feature=youtu.be>

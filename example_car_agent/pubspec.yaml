@@ -19,9 +19,9 @@ dependencies:
   flutter:
     sdk: flutter
 
-  flutter_davoice: ^0.0.20
-  flutter_wake_word: ^0.0.55
-  flutter_davoice_llm: ^0.0.16  # on-device LLM + agent for Local AI Chat
+  flutter_davoice: ^0.0.21
+  flutter_wake_word: ^0.0.56
+  flutter_davoice_llm: ^0.0.17  # on-device LLM + agent for Local AI Chat
 
   crypto: ^3.0.6  # model download checksums
   path_provider: ^2.1.5
@@ -29,6 +29,7 @@ dependencies:
 
   cupertino_icons: ^1.0.8
   cryptography: ^2.7.0
+  url_launcher: ^6.3.2  # the privacy policy link in the settings
 
 dev_dependencies:
   integration_test:
@@ -73,7 +74,7 @@ flutter:
     # Voice cloning's voice encoders, per language (lib/voice_clone/voice_clone.dart).
     - assets/models/embedder_en.dm
     - assets/models/embedder_brv1.dm
-    - assets/models/hey_coach_model_28_22012026b.dm
+    - assets/models/hey_davoice_model_28_06042026.dm
     - assets/models/sv.dm
     - assets/stt_bias_conf/
     # Local AI Chat's agent pack (same files as the RN example's agent/).

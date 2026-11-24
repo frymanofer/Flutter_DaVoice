@@ -7,6 +7,7 @@ import '../flow/app_language.dart';
 import 'car_state.dart';
 import 'car_undo.dart';
 import 'positions.dart';
+import 'basic_language.dart';
 
 // The DaVoice Car tools for the agent (port of the RN example's src/car/carTools.ts): definitions from assets/car/*.json (the same
 // files as the RN example), handlers that change the simulated car. Each call is recorded for the car card. The app says what it did
@@ -609,10 +610,21 @@ const _readOnlyCarTools = {'get_vehicle_status', 'get_trip_eta', 'find_along_rou
 /// [undoing]: the agent runs a recorded restoring call ("desfaz"): same checks, a sentence that says it was undone, nothing recorded.
 Object? runCarTool(String name, Map<String, Object?> args, {bool undoing = false}) {
   final run = _handlers[name];
+  // Basic language (basic_language.dart): not tuned, so every state change is asked first and runs only after the user's yes
+  final language = currentAppLanguage;
+  final basic = isBasicLanguage(language);
   try {
     if (run == null) throw _Refused(_l("Sorry, this car doesn't have that function.", 'Desculpe, este carro não tem essa função.'));
     if (_s.driving && (_notWhileDriving[name]?.call(args) ?? false)) {
-      throw _Refused(_l("I can't do that while the car is moving.", 'Não posso fazer isso com o carro em movimento.'));
+      throw _Refused(basic ? basicDriving(language) : _l("I can't do that while the car is moving.", 'Não posso fazer isso com o carro em movimento.'));
+    }
+    if (basic && !undoing && !_readOnlyCarTools.contains(name) && !takeConfirmed(name, args)) {
+      final asked = addPending([{'name': name, 'arguments': args}]);
+      final question = confirmQuestion([{'name': name, 'arguments': args}], language);
+      // ignore: avoid_print
+      print('[Car] ASK $name ${jsonEncode(args)} (basic $language): $question');
+      // the offer holds every call asked in this request (the core keeps one offer per request): one yes runs them all
+      return ToolReply({'ok': false, 'refused': 'waiting for the user to confirm', 'confirm': true, 'offer': {'calls': asked}}, question);
     }
     // vehicle policy: an undo never unlocks the car while it moves
     if (undoing && name == 'unlock_car' && _s.driving) {
@@ -630,6 +642,12 @@ Object? runCarTool(String name, Map<String, Object?> args, {bool undoing = false
     }
     String? say = out.say;
     if (undoing && say != null) say = _l('Undone. $say', 'Desfeito. $say');
+    // Basic language: the user just confirmed this exact action, so a short "done" in their language; lookups say their answer
+    if (basic) {
+      say = _readOnlyCarTools.contains(name)
+          ? basicAnswer(name, args, language, destination: _s.destination, fuelPercent: _s.fuelPercent) ?? say
+          : basicDone(language);
+    }
     if (say != null) return ToolReply({'ok': true, ...result}, say);
     final status = result['status'];
     if (status is String && status.startsWith('Done: ')) {
@@ -645,14 +663,23 @@ Object? runCarTool(String name, Map<String, Object?> args, {bool undoing = false
     // undo (core g29zk): a state-changing call that did not go through is still the last action, so "desfaz" right after it says
     // nothing was done instead of restoring an older action ({"ok": false} + "undo": false)
     final failedUndo = carUndoResults && !undoing && !_readOnlyCarTools.contains(name);
-    final offer = r.offer;
+    var offer = r.offer;
+    var refusal = RegExp(r'[.?!]$').hasMatch(text) ? text : _l("I didn't do that: ${r.message}.", 'Não fiz isso: ${r.message}.');
+    if (basic) {
+      // the tool's own sentences are English / Portuguese: a refusal with an offer becomes the question for that offer
+      if (offer != null && offer.isNotEmpty && !undoing) {
+        offer = addPending(offer);
+        refusal = confirmQuestion(offer, language);
+      } else {
+        refusal = r.message == basicDriving(language) ? r.message : basicCannot(language);
+      }
+    }
     return ToolReply({
       'ok': false,
       'refused': r.message,
       if (failedUndo) 'undo': false,
       if (offer != null && offer.isNotEmpty && !undoing) 'offer': {'calls': offer},
-    },
-        RegExp(r'[.?!]$').hasMatch(text) ? text : _l("I didn't do that: ${r.message}.", 'Não fiz isso: ${r.message}.'));
+    }, refusal);
   }
 }
 
@@ -672,6 +699,7 @@ Future<void> loadCarToolDefinitions({Future<String> Function(String path)? readF
   for (final e in _wordingFiles.entries) {
     _loaded[e.key] = jsonDecode(await read(e.value)) as Map<String, Object?>;
   }
+  loadBasicLanguages(await read('assets/car/basic_languages.json'));
 }
 
 /// The car tools for DavoiceAgent.setTools: the VW Brazil demo's profile (each wording's own) or the whole catalog.

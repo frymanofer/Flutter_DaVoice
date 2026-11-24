@@ -109,12 +109,12 @@ class VoiceCloneScreen extends StatelessWidget {
         ? clipping
             ? 'Too loud: move the phone a little further away.'
             : recordSeconds < recommendedSeconds
-                ? 'Keep reading: about $recommendedSeconds seconds is best.'
+                ? 'Keep reading…'
                 : 'Good. Stop when you finish the sentence.'
-        : 'Recording stops by itself after $maxSeconds seconds.';
+        : '';
     final volumeHint = volumePercent == 100
-        ? 'Same loudness as the recording.'
-        : '${(volumePercent - 100).abs()}% ${volumePercent > 100 ? 'louder' : 'quieter'} than the recording.';
+        ? ''
+        : '${volumePercent > 100 ? '+' : '−'}${(volumePercent - 100).abs()}%';
     final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
     return PanelScreen(
       child: Column(children: [
@@ -154,10 +154,10 @@ class VoiceCloneScreen extends StatelessWidget {
                   disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF2C3432))),
                 ),
               ),
-              const SizedBox(height: 6),
-              _hint(replaces != null
-                  ? 'Replaces your cloned voice "$replaces".'
-                  : 'Shown under this name in the voice list. Letters, digits, spaces and dashes.'),
+              if (replaces != null) ...[
+                const SizedBox(height: 6),
+                _hint('Replaces "$replaces"'),
+              ],
               const SizedBox(height: 18),
               const SectionLabel('Voice sample'),
               const SizedBox(height: 8),
@@ -310,7 +310,7 @@ class VoiceCloneScreen extends StatelessWidget {
                     if (resultWeak) ...[
                       const SizedBox(height: 6),
                       Text(
-                        'The recording has little clear speech, so the voice may not sound its best. For a better voice, record again for about $recommendedSeconds seconds in a quiet room.',
+                        'Little clear speech. Record again in a quiet room for a better voice.',
                         style: inter(13, FontWeight.w500, C.warning2, height: 18),
                       ),
                     ],
@@ -326,8 +326,6 @@ class VoiceCloneScreen extends StatelessWidget {
                   ]),
                 ),
               ],
-              const SizedBox(height: 14),
-              Text('Cloned voices folder: $folder', textAlign: TextAlign.center, style: inter(11, FontWeight.w400, const Color(0x73FFFFFF), height: 16)),
             ]),
           ),
         ),

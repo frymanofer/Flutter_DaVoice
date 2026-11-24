@@ -142,8 +142,8 @@ void main() {
         expect(voices, selectedVoice != 'Rich' ? ['Rich', selectedVoice] : ['Rich']);
         expect(models, [sharedModel]);
         // Speaker isolation: answer any voice.
-        expect(find.text('Skip · answer any voice'), findsOneWidget);
-        await tester.tap(find.text('Skip · answer any voice'));
+        expect(find.text('Skip'), findsOneWidget);
+        await tester.tap(find.text('Skip'));
         for (var i = 0; i < 10; i++) {
           await tester.pump(const Duration(milliseconds: 100));
         }
@@ -159,8 +159,8 @@ void main() {
         expect(wakewordPauseStopMicValues, isNotEmpty);
         expect(wakewordPauseStopMicValues, everyElement(isFalse));
         // The wake word screen, listening.
-        expect(find.text('Listening for the wake word'), findsOneWidget);
-        expect(find.text('“Hey Coach”'), findsOneWidget);
+        expect(find.text('Say'), findsOneWidget);
+        expect(find.text('“Hey DaVoice”'), findsOneWidget);
         Future<void> emit(String channel, Map<String, dynamic> event) async {
           messenger.handlePlatformMessage(
             channel,

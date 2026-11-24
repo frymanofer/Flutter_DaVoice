@@ -10,6 +10,7 @@
 // Same behaviour as the React Native examples (src/local_llm/confidence.ts).
 
 import 'package:flutter/material.dart';
+import '../car/basic_language.dart';
 
 const confidenceFallbacks = ['clarify', 'remote', 'decline'];
 const confidenceFallbackLabels = {'clarify': 'Clarify', 'remote': 'Remote', 'decline': 'Decline'};
@@ -95,7 +96,11 @@ Map<String, Object?> toCoreConfidence(ConfidenceSettings s, String language) => 
       'enabled': s.enabled,
       'min': snapThreshold(s.threshold),
       'fallback': s.fallback,
-      'messages': language.toLowerCase().startsWith('pt') ? _messages['pt-BR'] : _messages['en'],
+      'messages': {
+        for (final e in (language.toLowerCase().startsWith('pt') ? _messages['pt-BR'] : _messages['en'])!.entries)
+          // Basic languages (car/basic_language.dart) have their own sentences
+          e.key: basicMessage(language, {'clarify': 'lowClarify', 'decline': 'lowDecline', 'noRemote': 'lowNoRemote'}[e.key]!) ?? e.value,
+      },
     };
 
 const outcomeLabels = {
@@ -167,7 +172,7 @@ class ConfidenceControls extends StatelessWidget {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 const Text('Local confidence', style: label),
-                Text(value.enabled ? 'On · ${formatThreshold(value.threshold)}' : 'Off · every command is checked by the safety rules only', style: muted),
+                Text(value.enabled ? 'On · ${formatThreshold(value.threshold)}' : 'Off', style: muted),
               ]),
             ),
             Semantics(
@@ -198,7 +203,7 @@ class ConfidenceControls extends StatelessWidget {
           Opacity(
             opacity: off ? 0.45 : 1,
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Below the threshold the action does not run:', style: muted),
+              const Text('Below the threshold:', style: muted),
               const SizedBox(height: 6),
               Wrap(spacing: 6, children: [
                 for (final f in confidenceFallbacks)
@@ -210,12 +215,6 @@ class ConfidenceControls extends StatelessWidget {
               ]),
               Text(confidenceFallbackDetails[value.fallback] ?? '', style: muted),
             ]),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            "The score is the model's own estimate, not a guaranteed probability that the action is right. Unsafe or unsupported commands "
-            'are blocked whatever this setting is.',
-            style: TextStyle(color: Color(0xFFAAB2BA), fontSize: 11, height: 1.35),
           ),
         ],
       ),

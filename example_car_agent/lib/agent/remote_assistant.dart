@@ -7,6 +7,7 @@ import '../flow/app_language.dart';
 import '../flow/fragments.dart';
 import '../local_llm/model_config.dart';
 import '../general_questions_config.dart';
+import '../car/basic_language.dart';
 
 /// The remote assistant of Local AI Chat's DaVoice Agent model: Gemini (the
 /// same model, key and Google Search grounding as AI Chat) answers what the
@@ -56,24 +57,24 @@ class RemoteAssistant {
       if (isTooShortForDecline('${request['userText'] ?? request['query'] ?? ''}')) {
         // ignore: avoid_print
         print('[AIChat][REMOTE] declined fragment: asking to repeat');
-        return {'text': didNotCatch[language] ?? didNotCatch['en']};
+        return {'text': didNotCatch[language] ?? basicMessage(language, 'didNotCatch') ?? didNotCatch['en']};
       }
       // ignore: avoid_print
       print('[AIChat][REMOTE] not available in this demo (the model declined)');
-      return {'text': localLlmNotInDemoMessage[language] ?? localLlmNotInDemoMessage['en']};
+      return {'text': localLlmNotInDemoMessage[language] ?? basicMessage(language, 'notInDemo') ?? localLlmNotInDemoMessage['en']};
     }
     // The on-device model was not sure enough of its car action (Local confidence, reason "low-confidence") and no remote model is set
     // up: nothing ran, and the user hears that this command needs the remote agent (as the RN example).
     if (request['reason'] == 'low-confidence' && !answersOnline) {
       // ignore: avoid_print
       print('[AIChat][REMOTE] low confidence, no remote model set up: telling the user');
-      return {'text': localLlmLowConfidenceMessage[language] ?? localLlmLowConfidenceMessage['en']};
+      return {'text': localLlmLowConfidenceMessage[language] ?? basicMessage(language, 'lowNoRemote') ?? localLlmLowConfidenceMessage['en']};
     }
     // No remote assistant (general_questions_config.dart 'message' / 'local', or 'gemini' without a key): say so instead of answering.
     if (!answersOnline) {
       // ignore: avoid_print
       print('[AIChat][REMOTE] no remote assistant ($generalQuestionsMode, reason ${request['reason'] ?? '-'}): telling the user');
-      return {'text': generalQuestionsMessage[language] ?? generalQuestionsMessage['en'] ?? localLlmNoRemoteMessage['en']};
+      return {'text': generalQuestionsMessage[language] ?? basicMessage(language, 'noRemote') ?? generalQuestionsMessage['en'] ?? localLlmNoRemoteMessage['en']};
     }
     try {
       return await _askGemini(request);

@@ -13,6 +13,7 @@ import 'confidence.dart';
 import 'demo.dart';
 import 'model_config.dart';
 import 'model_store.dart';
+import '../car/basic_language.dart';
 
 const _weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const _months = [
@@ -125,20 +126,30 @@ class LocalLlmService {
     // never-act + "which seat?" stay on whatever the confidence setting; only their sentences follow the app's language.
     final language = currentAppLanguage;
     final confidence = currentLocalDemo == 'car' ? await store.localConfidence() : ConfidenceSettings.defaults.copyWith(enabled: false);
-    final confidenceKey = '${jsonEncode(confidence.toJson())}|$language';
+    final confidenceKey = '${jsonEncode(confidence.toJson())}|$language|${model.id}';
     if (!identical(_confidenceSentTo, agent) || _confidenceSent != confidenceKey) {
       _confidenceSentTo = agent;
       _confidenceSent = confidenceKey;
       final pt = language.toLowerCase().startsWith('pt');
+      final basic = currentLocalDemo == 'car' && isBasicLanguage(language);
       await agent.configure({
         'confidence': toCoreConfidence(confidence, language),
         'safety': {
           'neverAct': true,
           'seatAsk': true,
           'messages': {
-            'whichSeat': pt ? 'Qual banco: o seu, o do carona ou os dois?' : "Which seat: yours, the passenger's, or both?",
-            'unsupported': localLlmNotInDemoMessage[language] ?? localLlmNotInDemoMessage['en'],
+            'whichSeat': basicMessage(language, 'whichSeat') ?? (pt ? 'Qual banco: o seu, o do carona ou os dois?' : "Which seat: yours, the passenger's, or both?"),
+            'unsupported': localLlmNotInDemoMessage[language] ?? basicMessage(language, 'notInDemo') ?? localLlmNotInDemoMessage['en'],
           },
+        },
+        // Basic language (car/basic_language.dart): the command scope and the checks that look for English / Portuguese words would
+        // drop or block nearly every request, so they are off; every car action is asked first and runs only after a yes instead.
+        // The tuned languages get the model's own settings back (sent again whenever the language or the model changes).
+        'scope': basic ? {'enabled': false} : (model.scope ?? {'enabled': false}),
+        'guards': {
+          ..._callGuardSettings(model.callGuards ?? 'off', historyAsRun: model.historyAsRun),
+          if (basic) 'capability': 'off',
+          if (basic) 'polarity': 'off',
         },
       });
     }

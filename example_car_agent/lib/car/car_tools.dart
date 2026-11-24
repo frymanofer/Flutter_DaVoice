@@ -1,13 +1,20 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_davoice_llm/flutter_davoice_llm.dart';
 
 import '../flow/app_language.dart';
 import 'car_state.dart';
+import 'basic_language.dart';
 import 'car_undo.dart';
+import 'media_query.dart';
 import 'positions.dart';
 import 'speech_composer.dart';
+
+// what the agent was given this turn (main.dart): the handlers check copied titles against it
+String _lastUserText = '';
+void noteCarUserText(String text) => _lastUserText = text;
 
 // The DaVoice Car tools for the agent (port of the RN example's src/car/carTools.ts): definitions from assets/car/*.json (the same
 // files as the RN example), handlers that change the simulated car. Each call is recorded for the car card. The app says what it did
@@ -147,19 +154,47 @@ _Outcome _lockDoors(Object? door, bool lock) {
           _l('I ${lock ? 'locked' : 'unlocked'} ${n.text}.', '${lock ? 'Tranquei' : 'Destranquei'} ${n.text}.'));
 }
 
+/// The place find_along_route found last: "yes" to its offer navigates there (2.1 km away, not the demo's usual 24 minutes).
+String? _lastFound;
+
+/// The route's time and distance, said again by get_trip_eta (2026-11-21: after "take me there" (3 minutes) the ETA said 24 minutes).
+var _trip = (minutes: 24, km: 18 as num);
+const _enNearest = {'gas_station': 'the nearest gas station', 'ev_charger': 'the nearest EV charger', 'parking': 'the nearest parking spot',
+  'restaurant': 'the nearest restaurant', 'coffee': 'the nearest coffee shop', 'rest_area': 'the nearest rest area'};
+const _ptNearest = {'gas_station': 'o posto de combustível mais próximo', 'ev_charger': 'o carregador mais próximo',
+  'parking': 'o estacionamento mais próximo', 'restaurant': 'o restaurante mais próximo', 'coffee': 'o café mais próximo',
+  'rest_area': 'a parada mais próxima'};
+
 final Map<String, _Outcome Function(_Args)> _handlers = {
   'navigate_to': (a) {
     final d = _str(a['destination']);
     final shown = d == 'home' ? _l('home', 'casa') : d == 'work' ? _l('work', 'trabalho') : d;
     _s.destination = shown;
     car.changed();
+    if (_lastFound != null && d == _lastFound) {
+      _trip = (minutes: 3, km: 2.1);
+      return _done(_l('navigating to $shown', 'navegando para $shown'), {'minutes': 3, 'km': 2.1},
+          _l('Navigating to $shown: about 3 minutes, 2.1 km.', 'Indo para $shown: cerca de 3 minutos, 2,1 km.'));
+    }
+    _trip = (minutes: 24, km: 18);
     return _done(_l('navigating to $shown', 'navegando para $shown'), {'minutes': 24, 'km': 18},
         _l('Navigating to $shown: about 24 minutes, 18 km.', 'Indo para $shown: cerca de 24 minutos, 18 km.'));
   },
+  // 2026-11-21 (reply review, as the RN example): the found place comes with an offer: a plain "yes" (or "take me there") navigates
+  // there (the agent core runs the offered call). The question is said by the speech composer.
   'find_along_route': (a) {
     final p = _str(a['place_type']);
-    return _done(_l('found a ${_words(p)} 2.1 km ahead', '${_ptPlace[p] ?? p} encontrado a 2,1 km'), {'name': 'Nearest match', 'km': 2.1},
-        _l('I found ${_enPlace[p] ?? _words(p)} 2.1 km ahead.', 'Encontrei ${_ptPlaceSay[p] ?? p} a 2,1 km.'));
+    final found = _l(_enNearest[p] ?? 'the nearest ${_words(p)}', _ptNearest[p] ?? '${_words(p)} mais próximo');
+    _lastFound = found;
+    return _done(_l('found a ${_words(p)} 2.1 km ahead', '${_ptPlace[p] ?? p} encontrado a 2,1 km'), {
+      'name': 'Nearest match',
+      'km': 2.1,
+      'offer': {
+        'calls': [
+          {'name': 'navigate_to', 'arguments': {'destination': found}},
+        ],
+      },
+    }, _l('I found ${_enPlace[p] ?? _words(p)} 2.1 km ahead.', 'Encontrei ${_ptPlaceSay[p] ?? p} a 2,1 km.'));
   },
   'get_trip_eta': (a) {
     final dest = _s.destination;
@@ -167,8 +202,10 @@ final Map<String, _Outcome Function(_Args)> _handlers = {
       return _answer(_l('no active route', 'nenhuma rota ativa'), {'navigating': false},
           _l("There's no active route. Where do you want to go?", 'Não há nenhuma rota ativa. Para onde você quer ir?'));
     }
-    return _answer(_l('arriving in 24 min', 'chegada em 24 min'), {'destination': dest, 'minutes_left': 24, 'km_left': 18},
-        _l("You'll get to $dest in about 24 minutes, 18 km to go.", 'Você chega em $dest em cerca de 24 minutos; faltam 18 km.'));
+    final (:minutes, :km) = _trip;
+    final ptKm = '$km'.replaceAll('.', ',');
+    return _answer(_l('arriving in $minutes min', 'chegada em $minutes min'), {'destination': dest, 'minutes_left': minutes, 'km_left': km},
+        _l("You'll get to $dest in about $minutes minutes, $km km to go.", 'Você chega em $dest em cerca de $minutes minutos; faltam $ptKm km.'));
   },
   'set_route_avoid': (a) {
     final v = _str(a['avoid']);
@@ -439,7 +476,9 @@ final Map<String, _Outcome Function(_Args)> _handlers = {
     return _done(_l('ambient lighting ${on ? 'on' : 'off'}$color', 'luz ambiente ${on ? 'acesa' : 'apagada'}$color'));
   },
   'play_media': (a) {
-    final q = _str(a['query']);
+    // the driver's own words when the model copied the title wrong ("Perma Woman" for "Pretty Woman", media_query.dart)
+    final q = groundMediaQuery(_str(a['query']), _lastUserText);
+    if (q != _str(a['query'])) debugPrint('[Car] play_media query "${a['query']}" -> "$q" (the driver\'s words)');
     _s.media = q;
     _s.radio = null;
     _s.muted = false;
@@ -610,10 +649,22 @@ const _readOnlyCarTools = {'get_vehicle_status', 'get_trip_eta', 'find_along_rou
 /// [undoing]: the agent runs a recorded restoring call ("desfaz"): same checks, a sentence that says it was undone, nothing recorded.
 Object? runCarTool(String name, Map<String, Object?> args, {bool undoing = false}) {
   final run = _handlers[name];
+  // Basic language (basic_language.dart): not tuned, so every state change is asked first and runs only after the user's yes
+  final language = currentAppLanguage;
+  final basic = isBasicLanguage(language);
   try {
     if (run == null) throw _Refused(_l("Sorry, this car doesn't have that function.", 'Desculpe, este carro não tem essa função.'));
     if (_s.driving && (_notWhileDriving[name]?.call(args) ?? false)) {
-      throw _Refused(_l("I can't do that while the car is moving.", 'Não posso fazer isso com o carro em movimento.'));
+      throw _Refused(basic ? basicDriving(language) : _l("I can't do that while the car is moving.", 'Não posso fazer isso com o carro em movimento.'));
+    }
+    if (basic && !undoing && !_readOnlyCarTools.contains(name) && !takeConfirmed(name, args)) {
+      final asked = addPending([{'name': name, 'arguments': args}]);
+      final question = confirmQuestion([{'name': name, 'arguments': args}], language);
+      // ignore: avoid_print
+      print('[Car] ASK $name ${jsonEncode(args)} (basic $language): $question');
+      noteCarSay(name, question, false);
+      // the offer holds every call asked in this request (the core keeps one offer per request): one yes runs them all
+      return ToolReply({'ok': false, 'refused': 'waiting for the user to confirm', 'confirm': true, 'offer': {'calls': asked}}, question);
     }
     // vehicle policy: an undo never unlocks the car while it moves
     if (undoing && name == 'unlock_car' && _s.driving) {
@@ -625,21 +676,33 @@ Object? runCarTool(String name, Map<String, Object?> args, {bool undoing = false
     // ignore: avoid_print
     print('[Car] $name ${jsonEncode(args)} -> ${out.summary}');
     final result = <String, Object?>{...out.result};
+    // an offer of a successful result (find_along_route): the tuned languages only (a Basic language's yes needs its own question)
+    final offerCalls = ((result['offer'] as Map?)?['calls'] as List?)?.cast<Map>();
+    if (offerCalls != null && (basic || undoing)) result.remove('offer');
+    final offerNames = offerCalls != null && !basic && !undoing ? [for (final c in offerCalls) c['name'] as String] : null;
     if (before != null) {
       final undo = carRestoreCalls(before, carSnapshot(_s));
       if (undo != null) result['undo'] = undo;
     }
     String? say = out.say;
     if (undoing && say != null) say = _l('Undone. $say', 'Desfeito. $say');
+    // Basic language: the user just confirmed this exact action, so a short "done" in their language; lookups say their answer
+    if (basic) {
+      say = _readOnlyCarTools.contains(name)
+          ? basicAnswer(name, args, language, destination: _s.destination, fuelPercent: _s.fuelPercent) ?? say
+          : basicDone(language);
+    }
     // what the driver hears is composed from these when one request did several actions (speech_composer.dart); undo stays as it is
+    // what kind of sentence it is: only an action that changed the car gets the friendly words (speech_composer.dart)
+    final kind = _readOnlyCarTools.contains(name) ? 'answer' : result['already'] == true ? 'already' : 'did';
     if (say != null) {
-      noteCarSay(name, say, !undoing);
+      noteCarSay(name, say, !undoing, args: args, kind: kind, offer: offerNames);
       return ToolReply({'ok': true, ...result}, say);
     }
     final status = result['status'];
     if (status is String && status.startsWith('Done: ')) {
       final said = undoing ? _l('Undone. ${cap(out.summary)}.', 'Desfeito. ${cap(out.summary)}.') : '${cap(out.summary)}.';
-      noteCarSay(name, said, !undoing);
+      noteCarSay(name, said, !undoing, args: args, kind: kind);
       return ToolReply({'ok': true, ...result}, said);
     }
     return {'ok': true, ...result};
@@ -652,9 +715,19 @@ Object? runCarTool(String name, Map<String, Object?> args, {bool undoing = false
     // undo (core g29zk): a state-changing call that did not go through is still the last action, so "desfaz" right after it says
     // nothing was done instead of restoring an older action ({"ok": false} + "undo": false)
     final failedUndo = carUndoResults && !undoing && !_readOnlyCarTools.contains(name);
-    final offer = r.offer;
-    final refusal = RegExp(r'[.?!]$').hasMatch(text) ? text : _l("I didn't do that: ${r.message}.", 'Não fiz isso: ${r.message}.');
-    noteCarSay(name, refusal, false);
+    var offer = r.offer;
+    var refusal = RegExp(r'[.?!]$').hasMatch(text) ? text : _l("I didn't do that: ${r.message}.", 'Não fiz isso: ${r.message}.');
+    if (basic) {
+      // the tool's own sentences are English / Portuguese: a refusal with an offer becomes the question for that offer
+      if (offer != null && offer.isNotEmpty && !undoing) {
+        offer = addPending(offer);
+        refusal = confirmQuestion(offer, language);
+      } else {
+        refusal = r.message == basicDriving(language) ? r.message : basicCannot(language);
+      }
+    }
+    noteCarSay(name, refusal, false,
+        offer: offer != null && offer.isNotEmpty && !undoing ? [for (final c in offer) c['name'] as String] : null);
     return ToolReply({
       'ok': false,
       'refused': r.message,
@@ -680,6 +753,7 @@ Future<void> loadCarToolDefinitions({Future<String> Function(String path)? readF
   for (final e in _wordingFiles.entries) {
     _loaded[e.key] = jsonDecode(await read(e.value)) as Map<String, Object?>;
   }
+  loadBasicLanguages(await read('assets/car/basic_languages.json'));
 }
 
 /// The car tools for DavoiceAgent.setTools: the VW Brazil demo's profile (each wording's own) or the whole catalog.

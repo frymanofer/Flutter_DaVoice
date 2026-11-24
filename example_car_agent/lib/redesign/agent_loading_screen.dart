@@ -51,10 +51,9 @@ class AgentLoadingScreen extends StatelessWidget {
               children: [
                 Heading(
                   padding: const EdgeInsets.fromLTRB(24, 28, 24, 22),
-                  eyebrow: 'Step 5 of 5 · First start only',
+                  eyebrow: 'Step 5 of 5',
                   title: 'Starting the car agent',
-                  subtitle:
-                      '${modelName.isEmpty ? 'DaVoice Automotive Agent' : modelName} · on-device',
+                  subtitle: modelName.isEmpty ? null : modelName,
                 ),
                 Container(
                   margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -96,7 +95,7 @@ class AgentLoadingScreen extends StatelessWidget {
               child: error != null
                   ? PrimaryButton(label: 'Retry', onPressed: onRetry)
                   : const PrimaryButton(
-                      label: 'Opens when ready',
+                      label: 'Loading…',
                       onPressed: null,
                     ),
             ),

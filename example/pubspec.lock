@@ -114,18 +114,18 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_davoice
-      sha256: "8b6e80ec1fd946ca596916d0de90cd0b31617be89dffd5d16be0b2b5317114e1"
+      sha256: d25a093da369f0ab8021b22207b1a4a2f86239de0dfe837f704f511947de589e
       url: "https://pub.dev"
     source: hosted
-    version: "0.0.20"
+    version: "0.0.21"
   flutter_davoice_llm:
     dependency: "direct main"
     description:
       name: flutter_davoice_llm
-      sha256: "4d7e753c7397efc8bb275e8b4af4372848e3a9cca9045d24e37cea9172025c7f"
+      sha256: "4abf891a76b11f7946fdd6f6a4199ab7a024b03f9af4aac9fe99c09f76bb2532"
       url: "https://pub.dev"
     source: hosted
-    version: "0.0.16"
+    version: "0.0.17"
   flutter_driver:
     dependency: transitive
     description: flutter
@@ -148,10 +148,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_wake_word
-      sha256: ee3db4844c8fc99b7eb2f7947c72cecebc794c33ab790819cf918d05a9f1009d
+      sha256: "79865a1c86aeab2e82b19f5fdae7a65ace281cc125b260c034aa15554d70554e"
       url: "https://pub.dev"
     source: hosted
-    version: "0.0.55"
+    version: "0.0.56"
   flutter_web_plugins:
     dependency: transitive
     description: flutter

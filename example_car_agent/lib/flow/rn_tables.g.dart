@@ -21,7 +21,7 @@ const voiceCloneReadingTexts = {
 /// "Didn't catch that" for speech noise, per language (English for the others).
 const didNotCatchTexts = {
   'en': 'Sorry, I didn\'t catch that. Could you say it again?',
-  'pt-BR': 'Desculpe, não entendi. Pode repetir?',
+  'pt-BR': 'Desculpe, não entendi o que você disse. Pode repetir, por favor?',
   'pt-PT': 'Desculpe, não percebi. Pode repetir?',
 };
 

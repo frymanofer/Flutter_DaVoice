@@ -61,7 +61,7 @@ void main() {
       await tester.pumpWidget(_screen(mic: false, recording: false, sample: 'a_very_long_file_name_for_a_voice_recording_sample.m4a'));
       expect(tester.takeException(), isNull);
       expect(find.text('Choose another file'), findsOneWidget);
-      expect(find.text('20% louder than the recording.'), findsOneWidget);
+      expect(find.text('+20%'), findsOneWidget);
     });
   }
 }

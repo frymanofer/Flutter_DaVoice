@@ -1,14 +1,21 @@
 // Screen 8 · Car agent, one live car (React Native: src/redesign/CarAgentScreen.tsx): header with Parked / Driving, a status banner, the car
 // seen from above with temperatures / fan / fuel / volume / doors beside it, the last message card (what was heard, what ran, the reply,
-// outcome + model score), suggestion chips + text input in development builds, and the settings sheet (model, Local confidence).
+// outcome + model score), suggestion chips + text input in development builds, and the settings sheet (conversation mode, model,
+// Local confidence).
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../car/car_state.dart';
+import '../conversation/conversation_controller.dart';
+import '../conversation/conversation_settings.dart';
+import '../conversation/conversation_settings_panel.dart';
 import '../local_llm/confidence.dart';
 import 'car_drawing.dart';
 import 'chrome.dart';
+import 'privacy_policy_link.dart';
 import 'theme.dart';
 
 const _suggestionsPt = [
@@ -44,9 +51,6 @@ const _suggestionsEn = [
   'Volume 20',
 ];
 
-String _callText(CarAction a) =>
-    '${a.tool}(${a.args.entries.map((e) => '${e.key}: ${e.value is String ? e.value : e.value.toString()}').join(', ')})';
-
 (String, String)? _banner(CarState s) {
   if (s.call != null) return ('Calling ${s.call}', 'Phone');
   if (s.destination != null) {
@@ -80,6 +84,10 @@ class CarAgentScreen extends StatefulWidget {
     required this.onResetChat,
     required this.onChangeModel,
     required this.onChangeConfidence,
+    required this.conversation,
+    required this.onChangeConversation,
+    required this.conversationPhase,
+    required this.onTapToTalk,
     this.onSendText,
   });
   final String language;
@@ -97,6 +105,14 @@ class CarAgentScreen extends StatefulWidget {
   final VoidCallback onChangeModel;
   final ValueChanged<ConfidenceSettings> onChangeConfidence;
 
+  /// Conversation mode (lib/conversation): the settings and where the conversation is now.
+  final ConversationSettings conversation;
+  final ValueChanged<ConversationSettings> onChangeConversation;
+  final ConversationPhase conversationPhase;
+
+  /// The microphone: wakes a sleeping conversation, or stops the agent and listens.
+  final VoidCallback onTapToTalk;
+
   /// Dev aid: sends text through the same path as a final speech transcript.
   final ValueChanged<String>? onSendText;
   @override
@@ -106,6 +122,27 @@ class CarAgentScreen extends StatefulWidget {
 class _CarAgentScreenState extends State<CarAgentScreen> {
   final _text = TextEditingController();
   bool _settingsOpen = false;
+  // The sheet edits a draft; nothing changes in the app until Save (Cancel or a tap outside drops the draft).
+  late ConversationSettings _draftConversation = widget.conversation;
+  late ConfidenceSettings _draftConfidence = widget.localConfidence;
+
+  bool get _conversationDirty => _draftConversation != widget.conversation;
+  bool get _confidenceDirty =>
+      jsonEncode(_draftConfidence.toJson()) !=
+      jsonEncode(widget.localConfidence.toJson());
+  bool get _settingsDirty => _conversationDirty || _confidenceDirty;
+
+  void _openSettings() => setState(() {
+    _draftConversation = widget.conversation;
+    _draftConfidence = widget.localConfidence;
+    _settingsOpen = true;
+  });
+
+  void _saveSettings() {
+    if (_conversationDirty) widget.onChangeConversation(_draftConversation);
+    if (_confidenceDirty) widget.onChangeConfidence(_draftConfidence);
+    setState(() => _settingsOpen = false);
+  }
 
   @override
   void initState() {
@@ -213,10 +250,10 @@ class _CarAgentScreenState extends State<CarAgentScreen> {
     final title = p.working
         ? 'Working…'
         : p.ignored
-        ? 'Not for me — ignored'
+        ? 'Ignored'
         : latest != null
         ? '${blocked ? 'Blocked: ' : ''}${latest.summary.isEmpty ? '' : latest.summary[0].toUpperCase() + latest.summary.substring(1)}'
-        : 'Ready for a command';
+        : 'Ready';
     final pool = pt ? _suggestionsPt : _suggestionsEn;
     final k = (actions.length * 3) % pool.length;
     final chips = [for (var i = 0; i < 3; i++) pool[(k + i) % pool.length]];
@@ -291,10 +328,6 @@ class _CarAgentScreenState extends State<CarAgentScreen> {
                                   'Car Agent',
                                   style: inter(15, FontWeight.w700, C.text),
                                 ),
-                                Text(
-                                  'On-device',
-                                  style: inter(11, FontWeight.w400, C.text2),
-                                ),
                               ],
                             ),
                           ),
@@ -360,71 +393,68 @@ class _CarAgentScreenState extends State<CarAgentScreen> {
                     child: Row(
                       children: [
                         Expanded(
-                          child: Semantics(
-                            liveRegion: true,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: pop != null
-                                      ? C.mint
-                                      : const Color(0xFF34423D),
-                                ),
-                                color: pop != null
-                                    ? const Color(0x1F10B981)
-                                    : const Color(0xFF141C19),
-                                boxShadow: pop != null
-                                    ? const [
+                          child: pop == null
+                              ? const SizedBox()
+                              : Semantics(
+                                  liveRegion: true,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: C.mint),
+                                      color: const Color(0x1F10B981),
+                                      boxShadow: const [
                                         BoxShadow(
                                           color: Color(0x4D10B981),
                                           blurRadius: 12,
                                         ),
-                                      ]
-                                    : null,
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: pop != null ? C.mint : C.titanium,
+                                      ],
                                     ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      pop?.$1 ??
-                                          '${s.driving ? 'Driving' : 'Parked'} · all on-device',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: inter(13, FontWeight.w600, C.text),
-                                    ),
-                                  ),
-                                  if (pop != null && pop.$2.isNotEmpty)
-                                    ConstrainedBox(
-                                      constraints: const BoxConstraints(
-                                        maxWidth: 120,
-                                      ),
-                                      child: Text(
-                                        pop.$2,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: inter(
-                                          12,
-                                          FontWeight.w400,
-                                          C.text2,
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 8,
+                                          height: 8,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: C.mint,
+                                          ),
                                         ),
-                                      ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            pop.$1,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: inter(
+                                              13,
+                                              FontWeight.w600,
+                                              C.text,
+                                            ),
+                                          ),
+                                        ),
+                                        if (pop.$2.isNotEmpty)
+                                          ConstrainedBox(
+                                            constraints: const BoxConstraints(
+                                              maxWidth: 120,
+                                            ),
+                                            child: Text(
+                                              pop.$2,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: inter(
+                                                12,
+                                                FontWeight.w400,
+                                                C.text2,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
                                     ),
-                                ],
-                              ),
-                            ),
-                          ),
+                                  ),
+                                ),
                         ),
                         const SizedBox(width: 8),
                         _iconButton(
@@ -437,9 +467,9 @@ class _CarAgentScreenState extends State<CarAgentScreen> {
                         ),
                         const SizedBox(width: 8),
                         _iconButton(
-                          'Settings: model and local confidence',
-                          Icons.tune_rounded,
-                          () => setState(() => _settingsOpen = true),
+                          'Settings: conversation, model and local confidence',
+                          Icons.settings_rounded,
+                          _openSettings,
                         ),
                       ],
                     ),
@@ -547,7 +577,7 @@ class _CarAgentScreenState extends State<CarAgentScreen> {
                 // the last message
                 Container(
                   margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-                  constraints: const BoxConstraints(minHeight: 96),
+                  constraints: const BoxConstraints(minHeight: 72),
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(
                     vertical: 9,
@@ -571,21 +601,15 @@ class _CarAgentScreenState extends State<CarAgentScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text.rich(
-                          TextSpan(
-                            children: [
-                              const TextSpan(text: 'You: '),
-                              TextSpan(
-                                text: p.heard.isNotEmpty ? '“${p.heard}”' : '—',
-                                style: inter(13, FontWeight.w500, C.text),
-                              ),
-                            ],
+                        if (p.heard.isNotEmpty) ...[
+                          Text(
+                            '“${p.heard}”',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: inter(13, FontWeight.w500, C.text2),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: inter(13, FontWeight.w400, C.tag),
-                        ),
-                        const SizedBox(height: 3),
+                          const SizedBox(height: 3),
+                        ],
                         Text(
                           title,
                           maxLines: 1,
@@ -596,23 +620,10 @@ class _CarAgentScreenState extends State<CarAgentScreen> {
                             blocked && !p.working ? C.warning2 : Colors.white,
                           ),
                         ),
-                        const SizedBox(height: 3),
-                        Text(
-                          latest != null
-                              ? _callText(latest)
-                              : 'Say “${p.wakePhrase}”, then speak',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 11,
-                            color: C.tag,
-                          ),
-                        ),
                         if (p.reply.isNotEmpty && !p.ignored) ...[
                           const SizedBox(height: 3),
                           Text(
-                            '${p.voice}: ${p.reply}',
+                            p.reply,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: inter(
@@ -623,39 +634,90 @@ class _CarAgentScreenState extends State<CarAgentScreen> {
                             ),
                           ),
                         ],
-                        if (!p.working && p.lastTurn.outcome != null) ...[
+                        if (!p.working && p.lastTurn.low) ...[
                           const SizedBox(height: 3),
-                          Text.rich(
-                            TextSpan(
-                              children: [
-                                TextSpan(
-                                  text: outcomeLabels[p.lastTurn.outcome] ?? '',
-                                  style: inter(
-                                    12,
-                                    FontWeight.w700,
-                                    p.lastTurn.outcome == 'executed'
-                                        ? C.mint
-                                        : C.warning2,
-                                  ),
-                                ),
-                                if (p.lastTurn.low)
-                                  const TextSpan(
-                                    text: ' · held back by Local confidence',
-                                  ),
-                                if (p.lastTurn.score.isNotEmpty)
-                                  TextSpan(text: ' · ${p.lastTurn.score}'),
-                              ],
-                            ),
+                          Text(
+                            'Held back · ${p.lastTurn.value != null ? 'score ${p.lastTurn.value!.toStringAsFixed(2)}' : 'low score'}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: inter(12, FontWeight.w500, C.text2),
+                            style: inter(12, FontWeight.w500, C.warning2),
                           ),
                         ],
                       ],
                     ),
                   ),
                 ),
-                // dev: chips + typed input; release: the voice hint
+                // what the microphone is doing and what to say (every build: "Say “Hey DaVoice” before each request" when asleep)
+                Semantics(
+                  button: conversationTapEnabled(p.conversationPhase),
+                  label: p.conversationPhase == ConversationPhase.asleep
+                      ? 'Tap to talk'
+                      : 'Microphone',
+                  child: GestureDetector(
+                    onTap: conversationTapEnabled(p.conversationPhase)
+                        ? p.onTapToTalk
+                        : null,
+                    child: Container(
+                      margin: EdgeInsets.fromLTRB(
+                        12,
+                        8,
+                        12,
+                        p.onSendText != null && kDebugMode
+                            ? 0
+                            : 16 + MediaQuery.of(context).padding.bottom,
+                      ),
+                      height: 56,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(28),
+                        border: Border.all(
+                          color: p.conversationPhase == ConversationPhase.asleep
+                              ? C.titanium
+                              : C.mint,
+                          width: 1.5,
+                        ),
+                        color: const Color(0xFF1A2622),
+                        boxShadow:
+                            p.conversationPhase == ConversationPhase.asleep
+                            ? const []
+                            : const [
+                                BoxShadow(
+                                  color: Color(0x6610B981),
+                                  blurRadius: 16,
+                                ),
+                              ],
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            p.conversationPhase == ConversationPhase.asleep
+                                ? Icons.mic_off_rounded
+                                : Icons.mic_none_rounded,
+                            color:
+                                p.conversationPhase == ConversationPhase.asleep
+                                ? C.text2
+                                : C.mint,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              conversationHint(
+                                p.conversationPhase,
+                                p.wakePhrase,
+                                p.conversation.wakeWord,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: inter(15, FontWeight.w500, C.tag),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                // debug builds: chips + typed input under the voice hint
                 if (p.onSendText != null && kDebugMode)
                   Padding(
                     padding: EdgeInsets.fromLTRB(
@@ -720,10 +782,28 @@ class _CarAgentScreenState extends State<CarAgentScreen> {
                           ),
                           child: Row(
                             children: [
-                              const Icon(
-                                Icons.mic_none_rounded,
-                                color: C.mint,
-                                size: 20,
+                              Semantics(
+                                button: true,
+                                label:
+                                    p.conversationPhase ==
+                                        ConversationPhase.asleep
+                                    ? 'Tap to talk'
+                                    : 'Microphone',
+                                child: GestureDetector(
+                                  onTap: p.onTapToTalk,
+                                  child: Icon(
+                                    p.conversationPhase ==
+                                            ConversationPhase.asleep
+                                        ? Icons.mic_off_rounded
+                                        : Icons.mic_none_rounded,
+                                    color:
+                                        p.conversationPhase ==
+                                            ConversationPhase.asleep
+                                        ? C.text2
+                                        : C.mint,
+                                    size: 20,
+                                  ),
+                                ),
                               ),
                               const SizedBox(width: 8),
                               Expanded(
@@ -771,43 +851,6 @@ class _CarAgentScreenState extends State<CarAgentScreen> {
                         ),
                       ],
                     ),
-                  )
-                else
-                  Container(
-                    margin: EdgeInsets.fromLTRB(
-                      12,
-                      8,
-                      12,
-                      16 + MediaQuery.of(context).padding.bottom,
-                    ),
-                    height: 56,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(color: C.mint, width: 1.5),
-                      color: const Color(0xFF1A2622),
-                      boxShadow: const [
-                        BoxShadow(color: Color(0x6610B981), blurRadius: 16),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.mic_none_rounded,
-                          color: C.mint,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Say “${p.wakePhrase}”, then speak',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: inter(15, FontWeight.w500, C.tag),
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
               ],
             ),
@@ -824,6 +867,13 @@ class _CarAgentScreenState extends State<CarAgentScreen> {
                         child: GestureDetector(
                           onTap: () {},
                           child: Container(
+                            constraints: BoxConstraints(
+                              maxHeight:
+                                  (MediaQuery.of(context).size.height -
+                                          sb -
+                                          136)
+                                      .clamp(240.0, double.infinity),
+                            ),
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(16),
@@ -841,89 +891,161 @@ class _CarAgentScreenState extends State<CarAgentScreen> {
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Text(
-                                  'SETTINGS',
-                                  style: inter(
-                                    11,
-                                    FontWeight.w700,
-                                    C.mint,
-                                    letterSpacing: 2,
+                                Flexible(
+                                  child: SingleChildScrollView(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        Text(
+                                          'CONVERSATION',
+                                          style: inter(
+                                            11,
+                                            FontWeight.w700,
+                                            C.mint,
+                                            letterSpacing: 2,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        ConversationSettingsPanel(
+                                          value: _draftConversation,
+                                          onChanged: (v) => setState(
+                                            () => _draftConversation = v,
+                                          ),
+                                          wakePhrase: p.wakePhrase,
+                                          theme: const ConversationPanelTheme(
+                                            text: C.text,
+                                            text2: C.text2,
+                                            accent: C.mint,
+                                            selectedBg: Color(0xFF1C4636),
+                                            control: C.carbon,
+                                            controlBorder: C.controlBorder,
+                                            fontFamily: kFont,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        const Divider(
+                                          height: 1,
+                                          color: C.titanium,
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          'MODEL',
+                                          style: inter(
+                                            11,
+                                            FontWeight.w700,
+                                            C.mint,
+                                            letterSpacing: 2,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    'Model',
+                                                    style: inter(
+                                                      14,
+                                                      FontWeight.w600,
+                                                      C.text,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    p.modelName.isEmpty
+                                                        ? '…'
+                                                        : p.modelName,
+                                                    maxLines: 2,
+                                                    style: inter(
+                                                      12,
+                                                      FontWeight.w400,
+                                                      C.text2,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            GestureDetector(
+                                              onTap: p.working
+                                                  ? null
+                                                  : () {
+                                                      setState(
+                                                        () => _settingsOpen =
+                                                            false,
+                                                      );
+                                                      p.onChangeModel();
+                                                    },
+                                              child: Opacity(
+                                                opacity: p.working ? 0.5 : 1,
+                                                child: Container(
+                                                  height: 44,
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 16,
+                                                      ),
+                                                  alignment: Alignment.center,
+                                                  decoration: BoxDecoration(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          12,
+                                                        ),
+                                                    border: Border.all(
+                                                      color: const Color(
+                                                        0x8034D399,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    'Change',
+                                                    style: inter(
+                                                      14,
+                                                      FontWeight.w600,
+                                                      C.mint,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 12),
+                                        ConfidenceControls(
+                                          value: _draftConfidence,
+                                          onChanged: (v) => setState(
+                                            () => _draftConfidence = v,
+                                          ),
+                                          disabled: p.working,
+                                        ),
+                                        const SizedBox(height: 16),
+                                        const Divider(height: 1, color: C.titanium),
+                                        const SizedBox(height: 16),
+                                        Text('ABOUT', style: inter(11, FontWeight.w700, C.mint, letterSpacing: 2)),
+                                        const SizedBox(height: 12),
+                                        const PrivacyPolicyLink(),
+                                      ],
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            'Model',
-                                            style: inter(
-                                              14,
-                                              FontWeight.w600,
-                                              C.text,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            p.modelName.isEmpty
-                                                ? '…'
-                                                : p.modelName,
-                                            maxLines: 2,
-                                            style: inter(
-                                              12,
-                                              FontWeight.w400,
-                                              C.text2,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    GestureDetector(
-                                      onTap: p.working
-                                          ? null
-                                          : () {
-                                              setState(
-                                                () => _settingsOpen = false,
-                                              );
-                                              p.onChangeModel();
-                                            },
-                                      child: Opacity(
-                                        opacity: p.working ? 0.5 : 1,
-                                        child: Container(
-                                          height: 44,
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                          ),
-                                          alignment: Alignment.center,
-                                          decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                            border: Border.all(
-                                              color: const Color(0x8034D399),
-                                            ),
-                                          ),
-                                          child: Text(
-                                            'Change',
-                                            style: inter(
-                                              14,
-                                              FontWeight.w600,
-                                              C.mint,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                ConfidenceControls(
-                                  value: p.localConfidence,
-                                  onChanged: p.onChangeConfidence,
-                                  disabled: p.working,
+                                ConversationSaveRow(
+                                  dirty: _settingsDirty,
+                                  theme: const ConversationPanelTheme(
+                                    text: C.text,
+                                    text2: C.text2,
+                                    accent: C.mint,
+                                    selectedBg: Color(0xFF1C4636),
+                                    control: C.carbon,
+                                    controlBorder: C.controlBorder,
+                                    fontFamily: kFont,
+                                  ),
+                                  onCancel: () =>
+                                      setState(() => _settingsOpen = false),
+                                  onSave: _saveSettings,
                                 ),
                               ],
                             ),

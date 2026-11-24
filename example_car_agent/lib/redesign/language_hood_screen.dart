@@ -17,6 +17,7 @@ class HoodLanguage {
     required this.name,
     required this.sizeMB,
     required this.installed,
+    this.tuned,
   });
   final String id;
 
@@ -30,6 +31,11 @@ class HoodLanguage {
   final String name;
   final int sizeMB;
   final bool installed;
+
+  /// Car agent: true = the model is tuned for this language; false = Basic (every action is asked first); null = not shown.
+  final bool? tuned;
+
+  String get tunedLabel => tuned == null ? '' : (tuned! ? ' · Tuned' : ' · Basic');
 }
 
 class LanguageHoodScreen extends StatefulWidget {
@@ -179,12 +185,6 @@ class _LanguageHoodScreenState extends State<LanguageHoodScreen>
                           letterSpacing: d(18) * 0.06,
                         ),
                       ),
-                      SizedBox(height: d(3)),
-                      Text(
-                        'Select a voice pack to install on the engine',
-                        textAlign: TextAlign.center,
-                        style: inter(d(12), FontWeight.w400, C.mintLight),
-                      ),
                     ],
                   ),
                 ),
@@ -282,9 +282,7 @@ class _LanguageHoodScreenState extends State<LanguageHoodScreen>
                                   ),
                                 ),
                                 Text(
-                                  current.installed
-                                      ? 'Installed'
-                                      : '${current.sizeMB} MB',
+                                  '${current.installed ? 'Installed' : '${current.sizeMB} MB'}${current.tunedLabel}',
                                   style: inter(d(11), FontWeight.w400, C.text2),
                                 ),
                               ],
@@ -314,7 +312,9 @@ class _LanguageHoodScreenState extends State<LanguageHoodScreen>
                       ),
                       SizedBox(height: d(6)),
                       Text(
-                        'Scroll the module rack to pick one. It installs once and runs offline.',
+                        widget.languages.any((l) => l.tuned == false)
+                            ? 'Tuned: full car agent. Basic: asks before every action.'
+                            : 'Installs once and runs offline.',
                         style:
                             inter(
                               d(12),
@@ -451,9 +451,9 @@ class _LanguageHoodScreenState extends State<LanguageHoodScreen>
                                             ),
                                             const SizedBox(height: 2),
                                             Text(
-                                              lang.installed
-                                                  ? 'Installed'
-                                                  : '${lang.sizeMB} MB',
+                                              '${lang.installed ? 'Installed' : '${lang.sizeMB} MB'}${lang.tunedLabel}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
                                               style: inter(
                                                 11,
                                                 FontWeight.w400,

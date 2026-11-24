@@ -139,24 +139,6 @@ class _WakeWordScreenState extends State<WakeWordScreen>
     },
   );
 
-  Widget _chip(String text, {bool on = false}) => Container(
-    height: 32,
-    padding: const EdgeInsets.symmetric(horizontal: 12),
-    alignment: Alignment.center,
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(
-        color: on ? const Color(0x8034D399) : const Color(0xFF46544F),
-      ),
-      color: on ? const Color(0x1F10B981) : const Color(0xFF1A2420),
-    ),
-    child: Text(
-      text,
-      maxLines: 1,
-      style: inter(12, FontWeight.w400, on ? C.mint : C.tag),
-    ),
-  );
-
   @override
   Widget build(BuildContext context) {
     final sb = MediaQuery.of(context).padding.top;
@@ -185,16 +167,42 @@ class _WakeWordScreenState extends State<WakeWordScreen>
                     padding: EdgeInsets.fromLTRB(12, sb + 12, 12, 0),
                     child: SizedBox(
                       height: 44,
-                      child: Center(
-                        child: Text(
-                          'STEP 4 OF 5',
-                          style: inter(
-                            11,
-                            FontWeight.w700,
-                            C.mint,
-                            letterSpacing: 11 * 0.18,
+                      child: Stack(
+                        children: [
+                          Center(
+                            child: Text(
+                              'STEP 4 OF 5',
+                              style: inter(
+                                11,
+                                FontWeight.w700,
+                                C.mint,
+                                letterSpacing: 11 * 0.18,
+                              ),
+                            ),
                           ),
-                        ),
+                          if (p.session == null && p.onSimulateWakeWord != null)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: PopupMenuButton<int>(
+                                tooltip: 'Menu',
+                                icon: const Icon(
+                                  Icons.more_horiz_rounded,
+                                  color: C.text2,
+                                ),
+                                color: C.panel,
+                                onSelected: (_) => p.onSimulateWakeWord!(),
+                                itemBuilder: (_) => [
+                                  PopupMenuItem(
+                                    value: 0,
+                                    child: Text(
+                                      'Skip wake word (test)',
+                                      style: inter(14, FontWeight.w500, C.text),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ),
@@ -307,7 +315,7 @@ class _WakeWordScreenState extends State<WakeWordScreen>
                           children: p.listening
                               ? [
                                   Text(
-                                    'Listening for the wake word',
+                                    'Say',
                                     textAlign: TextAlign.center,
                                     style: inter(16, FontWeight.w500, C.tag),
                                   ),
@@ -334,20 +342,8 @@ class _WakeWordScreenState extends State<WakeWordScreen>
                                           ),
                                     ),
                                   ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'then say what you want the car to do',
-                                    textAlign: TextAlign.center,
-                                    style: inter(15, FontWeight.w500, C.tag),
-                                  ),
                                 ]
                               : [
-                                  Text(
-                                    'Wake word · “${p.wakePhrase}”',
-                                    textAlign: TextAlign.center,
-                                    style: inter(16, FontWeight.w500, C.tag),
-                                  ),
-                                  const SizedBox(height: 8),
                                   Text(
                                     p.message,
                                     textAlign: TextAlign.center,
@@ -361,20 +357,6 @@ class _WakeWordScreenState extends State<WakeWordScreen>
                                 ],
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      alignment: WrapAlignment.center,
-                      children: [
-                        _chip('Voice · ${p.voice}'),
-                        _chip(p.language),
-                        _chip(
-                          p.driverOnly ? 'Driver only' : 'Anyone',
-                          on: p.driverOnly,
-                        ),
-                      ],
                     ),
                   ],
                 ],
@@ -401,14 +383,6 @@ class _WakeWordScreenState extends State<WakeWordScreen>
                         child: SecondaryButton(
                           label: 'Continue',
                           onPressed: p.session!.onContinue,
-                        ),
-                      ),
-                    if (p.session == null && p.onSimulateWakeWord != null)
-                      Expanded(
-                        child: SecondaryButton(
-                          label: 'Simulate wake word',
-                          textStyle: inter(15, FontWeight.w700, C.tag),
-                          onPressed: p.onSimulateWakeWord,
                         ),
                       ),
                   ],

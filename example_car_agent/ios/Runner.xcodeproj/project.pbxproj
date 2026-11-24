@@ -11,6 +11,7 @@
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		36762F8730977FA300BABC6F /* sv.dm in Resources */ = {isa = PBXBuildFile; fileRef = 36762F8630977FA300BABC6F /* sv.dm */; };
 		36DDC6B32F96686A00A85AB1 /* hey_coach_model_28_22012026b.dm in Resources */ = {isa = PBXBuildFile; fileRef = 36DDC6B22F96686A00A85AB1 /* hey_coach_model_28_22012026b.dm */; };
+		4D5A11C12FA0000100C0FFEE /* hey_davoice_model_28_06042026.dm in Resources */ = {isa = PBXBuildFile; fileRef = 4D5A11C22FA0000100C0FFEE /* hey_davoice_model_28_06042026.dm */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
 		4FA15338BA7C9D7765236E7D /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C99A755ACF6EA662CDFC8D7A /* Pods_RunnerTests.framework */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
@@ -56,6 +57,7 @@
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		36762F8630977FA300BABC6F /* sv.dm */ = {isa = PBXFileReference; lastKnownFileType = file; name = sv.dm; path = ../assets/models/sv.dm; sourceTree = SOURCE_ROOT; };
 		36DDC6B22F96686A00A85AB1 /* hey_coach_model_28_22012026b.dm */ = {isa = PBXFileReference; lastKnownFileType = file; name = hey_coach_model_28_22012026b.dm; path = ../assets/models/hey_coach_model_28_22012026b.dm; sourceTree = SOURCE_ROOT; };
+		4D5A11C22FA0000100C0FFEE /* hey_davoice_model_28_06042026.dm */ = {isa = PBXFileReference; lastKnownFileType = file; name = hey_davoice_model_28_06042026.dm; path = ../assets/models/hey_davoice_model_28_06042026.dm; sourceTree = SOURCE_ROOT; };
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
 		5C5D8B04A3EC0AA581B64F0B /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		61F4D8F6367E9DF7A10C620D /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
@@ -160,6 +162,7 @@
 				36762F8630977FA300BABC6F /* sv.dm */,
 				E99D3217299C9DFFCACEC7F4 /* words_flattened.txt */,
 				36DDC6B22F96686A00A85AB1 /* hey_coach_model_28_22012026b.dm */,
+				4D5A11C22FA0000100C0FFEE /* hey_davoice_model_28_06042026.dm */,
 				97C146FA1CF9000F007C117D /* Main.storyboard */,
 				97C146FD1CF9000F007C117D /* Assets.xcassets */,
 				97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */,
@@ -289,6 +292,7 @@
 				3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */,
 				97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */,
 				36DDC6B32F96686A00A85AB1 /* hey_coach_model_28_22012026b.dm in Resources */,
+				4D5A11C12FA0000100C0FFEE /* hey_davoice_model_28_06042026.dm in Resources */,
 				36762F8730977FA300BABC6F /* sv.dm in Resources */,
 				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
 			);
@@ -484,7 +488,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = iphoneos;
@@ -614,7 +618,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -665,7 +669,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = iphoneos;

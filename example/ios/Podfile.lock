@@ -1,20 +1,16 @@
 PODS:
+  - DaVoiceOnnxRuntime (1.31.0)
   - Flutter (1.0.0)
   - flutter_davoice (0.0.1):
+    - DaVoiceOnnxRuntime (= 1.31.0)
     - Flutter
-    - onnxruntime-objc (~> 1.20.0)
   - flutter_davoice_llm (0.0.1):
     - Flutter
   - flutter_wake_word (1.0.1):
+    - DaVoiceOnnxRuntime (= 1.31.0)
     - Flutter
-    - onnxruntime-objc (~> 1.20.0)
   - ios_microphone_permission (0.0.1):
     - Flutter
-  - onnxruntime-c (1.20.0)
-  - onnxruntime-objc (1.20.0):
-    - onnxruntime-objc/Core (= 1.20.0)
-  - onnxruntime-objc/Core (1.20.0):
-    - onnxruntime-c (= 1.20.0)
   - permission_handler_apple (9.3.0):
     - Flutter
 
@@ -28,8 +24,7 @@ DEPENDENCIES:
 
 SPEC REPOS:
   trunk:
-    - onnxruntime-c
-    - onnxruntime-objc
+    - DaVoiceOnnxRuntime
 
 EXTERNAL SOURCES:
   Flutter:
@@ -46,15 +41,14 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/permission_handler_apple/ios"
 
 SPEC CHECKSUMS:
+  DaVoiceOnnxRuntime: cadb788cade92b31a7e00d5af693cd3f110e694a
   Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
-  flutter_davoice: 6ac6c209dbcb5346644249d38effc3a519f080f0
+  flutter_davoice: d0155abbe889c63cc241ea3b0781e09e95cd3beb
   flutter_davoice_llm: fa15bf7434b033108e7a8d39632ddf83335b9b90
-  flutter_wake_word: dc09f1b6a3f91d6fa135f454f07f3e23b367e83c
+  flutter_wake_word: 0cb4100fcd8bf2ee8c342b0c3cea87b511a1aed6
   ios_microphone_permission: 7d975ad9996d44c677d44c188dc69db9bf5badf3
-  onnxruntime-c: 07cfff40dda7e1c54a4350bb2ad226c63150fce3
-  onnxruntime-objc: b22c5d4517e9804e47c66f1f122ec4a6aa923f86
   permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
 
-PODFILE CHECKSUM: c6ea42b603d65bb7658e8580c41cd2708aa6e90b
+PODFILE CHECKSUM: 97e61fde1480a369f9dbcb6496e1e3c83b29def9
 
 COCOAPODS: 1.16.2

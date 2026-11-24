@@ -10,6 +10,7 @@
 // Same behaviour as the React Native examples (src/local_llm/confidence.ts).
 
 import 'package:flutter/material.dart';
+import '../car/basic_language.dart';
 
 const confidenceFallbacks = ['clarify', 'remote', 'decline'];
 const confidenceFallbackLabels = {'clarify': 'Clarify', 'remote': 'Remote', 'decline': 'Decline'};
@@ -95,7 +96,11 @@ Map<String, Object?> toCoreConfidence(ConfidenceSettings s, String language) => 
       'enabled': s.enabled,
       'min': snapThreshold(s.threshold),
       'fallback': s.fallback,
-      'messages': language.toLowerCase().startsWith('pt') ? _messages['pt-BR'] : _messages['en'],
+      'messages': {
+        for (final e in (language.toLowerCase().startsWith('pt') ? _messages['pt-BR'] : _messages['en'])!.entries)
+          // Basic languages (car/basic_language.dart) have their own sentences
+          e.key: basicMessage(language, {'clarify': 'lowClarify', 'decline': 'lowDecline', 'noRemote': 'lowNoRemote'}[e.key]!) ?? e.value,
+      },
     };
 
 const outcomeLabels = {

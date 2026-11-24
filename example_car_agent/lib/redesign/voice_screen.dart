@@ -141,13 +141,6 @@ class VoiceScreen extends StatelessWidget {
                                     Colors.white,
                                   ),
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Record ~20 s or upload a file',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: inter(12, FontWeight.w400, C.text2),
-                                ),
                               ],
                             ),
                           ),
@@ -376,7 +369,7 @@ class VoiceScreen extends StatelessWidget {
                       border: Border.all(color: const Color(0xFF1F2B27)),
                     ),
                     child: Text(
-                      'None yet — clone one above',
+                      'None yet',
                       style: inter(13, FontWeight.w400, C.text2),
                     ),
                   )

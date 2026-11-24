@@ -21,8 +21,8 @@ const generalQuestionsMessage = {
 
 /// (c) Said before the car model's own attempt, when it has no answer, and before Wikipedia's own sentences.
 const generalQuestionsLocalIntro = {
-  'en': 'Since there is no remote agent configured, I will try to answer that.',
-  'pt-BR': 'Como não há um agente remoto configurado, vou tentar responder.',
+  'en': "There's no online assistant set up here, but let me try.",
+  'pt-BR': 'Não tem um assistente online configurado aqui, mas deixa eu tentar.',
 };
 const generalQuestionsLocalNoAnswer = {
   'en': "I'm not sure about that one.",

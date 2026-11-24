@@ -321,7 +321,7 @@ class InstallSpeedometerScreen extends StatelessWidget {
                   bottom: 24 + MediaQuery.of(context).padding.bottom,
                   child: installed
                       ? _PrimaryWide(
-                          label: 'Ready to drive — choose a voice',
+                          label: 'Continue',
                           arrow: true,
                           onTap: onContinue,
                         )
@@ -344,7 +344,7 @@ class InstallSpeedometerScreen extends StatelessWidget {
                           ],
                         )
                       : _SecondaryWide(
-                          label: 'Cancel installation',
+                          label: 'Cancel',
                           onTap: onCancel,
                         ),
                 ),

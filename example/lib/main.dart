@@ -9,6 +9,10 @@ import 'calories/calorie_log.dart';
 import 'calories/calories_card.dart';
 import 'car/car_card.dart';
 import 'car/car_tools.dart';
+import 'conversation/conversation_controller.dart';
+import 'conversation/conversation_settings.dart';
+import 'conversation/conversation_settings_panel.dart';
+import 'conversation/conversation_store.dart';
 import 'flow/app_language.dart';
 import 'flow/fragments.dart';
 import 'local_llm/demo.dart';
@@ -33,6 +37,7 @@ import 'package:flutter_davoice_llm/flutter_davoice_llm.dart';
 import 'package:flutter_wake_word/flutter_wake_word.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'car/basic_language.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,6 +56,9 @@ const _svSpeakerId = 'user';
 // src/tts/index.ts languageFile); every voice is a speaker of it.
 const _brazilianSpeakerSpeed = 1.0; // BRAZILIAN_SPEAKER_SPEED
 const _svOnboardingSampleCount = 5;
+// One voice sample may take this long (it was 30 s: a slow first sample ended the start-up on a phone).
+const _svSampleTimeout = Duration(seconds: 60);
+const svEnrollmentFailedNotice = "I couldn't hear the samples clearly. Try again in a quiet place, or skip this step.";
 const _androidSvUiMatchThreshold = 0.34;
 final _svDecisionThreshold = Platform.isAndroid ? 0.34 : 0.35;
 const _svMatchHold = Duration(milliseconds: 750);
@@ -63,7 +71,6 @@ const _wakewordInstanceId = 'multi_model_instance';
 const _wakewordThreshold = 0.999;
 const _wakewordBufferCount = 3;
 const _wakewordMsBetweenCallbacks = 1000;
-const _speechSilenceTimeout = Duration(milliseconds: 2000);
 const _geminiModel = 'gemini-3.1-flash-lite-preview';
 const _geminiSystemPrompt =
     'You are a helpful voice assistant inside a Flutter demo app. Reply conversationally, keep answers concise for spoken playback, and avoid markdown. For time-sensitive facts like current leaders, dates, news, prices, or recent events, answer cautiously and say when you may be unsure rather than asserting a stale fact.';
@@ -282,6 +289,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   String? _geminiApiKey;
   String? _savedEnrollmentJson;
   String? _savedEnrollmentJsonPath;
+  String _svPromptNotice = ''; // after a failed recording (svEnrollmentFailedNotice)
   String? _enrollmentJsonPath;
   String? _pendingWakeWordForModeChoice;
   _SVStatusPhase _svStatusPhase = _SVStatusPhase.onboarding;
@@ -313,6 +321,55 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   String _lastTranscript = '';
   String _partialTranscript = '';
   String _lastWakeWord = 'Hey Coach';
+
+  // --- Conversation mode (lib/conversation; the settings sheet on the car screen): take turns or interrupt, wake word
+  // or just talk, and each mode's timeouts. The controller owns the microphone between requests.
+  ConversationSettings _conversationSettings = defaultConversationSettings;
+  ConversationPhase _conversationPhase = ConversationPhase.off;
+  late final ConversationController _conversation = ConversationController(
+    ConversationCommands(
+      openMic: (preFetchMs, why) => _openConversationMic(preFetchMs, why),
+      closeMic: (why) async {
+        _speechSilenceTimer?.cancel();
+        _lastTranscript = '';
+        await _speech.pauseSpeechRecognition();
+      },
+      armWakeWord: (why) async {
+        if (why == 'leave') return; // _leaveCarAgent resumes the wake word itself
+        await _unPauseWakeWordDetection();
+        _wakeWordArmed = true;
+      },
+      disarmWakeWord: (why) async {
+        _wakeWordArmed = false;
+        await _pauseWakeWordDetection();
+      },
+      stopReply: (why) async {
+        _endReplyNow(why);
+        await _speech.stopSpeaking();
+      },
+      onPhase: (phase) {
+        if (!mounted) return;
+        setState(() {
+          _conversationPhase = phase;
+          if (phase == ConversationPhase.asleep) {
+            _message = _conversationSettings.wakeWord ? 'Say “$_lastWakeWord” before each request.' : 'Say “$_lastWakeWord” to continue.';
+            _partialTranscript = '';
+          }
+        });
+      },
+      log: _log,
+    ),
+    defaultConversationSettings,
+  );
+  late final Future<ConversationSettings> _conversationLoad = loadConversationSettings();
+
+  /// What the agent has said in the current request, for the interrupt mode's echo check.
+  String _spokenThisTurn = '';
+
+  /// A wake word opened this request: its words may lead the transcript (pre-fetch) and are dropped.
+  bool _wakePrefixPending = false;
+
+  Duration get _speechSilenceTimeout => Duration(milliseconds: _conversationSettings.endOfSpeechMs);
   final List<Map<String, dynamic>> _geminiConversation = [];
   Timer? _speechSilenceTimer;
   int _speechUiEpoch = 0;
@@ -357,6 +414,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     super.initState();
     _loadGeminiApiKey();
     _listenToSpeechEvents();
+    // the saved conversation settings; the audio routing is set from them when the wake word starts
+    unawaited(_conversationLoad.then((saved) => _applyConversationSettings(saved, save: false, audio: false)));
     unawaited(_refreshReadyPacks());
     unawaited(_localLlm.store.localConfidence().then((v) {
       if (mounted) setState(() => _localConfidence = v);
@@ -443,7 +502,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       !_suppressSpeechResults &&
       !_isSwitchingMode &&
       (_isFullAIChatMode || _speechEchoSessionActive) &&
-      !_isTtsSpeaking;
+      (!_isTtsSpeaking || _conversation.duplexOpen);
 
   void _listenToSpeechEvents() {
     _subscriptions.addAll([
@@ -460,21 +519,24 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         if (current.isEmpty) return;
 
         if (_isFullAIChatMode) {
-          if (_isAIChatLoading || _isTtsSpeaking) return;
+          if ((_isAIChatLoading || _isTtsSpeaking) && !_heardWhileBusy(current)) return;
+          _conversation.userSpeech();
           final merged = Platform.isAndroid
               ? mergeTranscript(_lastTranscript, current)
               : current;
           _scheduleAIChatTimeout();
           setState(() {
             _lastTranscript = merged;
-            _partialTranscript = merged;
+            _partialTranscript = _shownTranscript(merged);
             _currentSpeechSentence = merged;
             _message = 'Listening...';
           });
           // Process the user's words into the model while they still speak,
           // so the reply only has to process the last few words.
           if (_isLocalAIChat) {
-            unawaited(_localLlm.prefillForTurn(_localChatHistory(), merged));
+            // the wake phrase pre-fetched in front of the request never reaches the model
+            final forModel = _wakePrefixPending && _conversationSettings.wakeWord ? dropWakePhrase(merged, _lastWakeWord) : merged;
+            if (forModel.isNotEmpty) unawaited(_localLlm.prefillForTurn(_localChatHistory(), forModel));
           }
           return;
         }
@@ -499,7 +561,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         if (merged == _lastTranscript) return;
         setState(() {
           _lastTranscript = merged;
-          _partialTranscript = merged;
+          _partialTranscript = _shownTranscript(merged);
           _currentSpeechSentence = merged;
           _message = 'Listening...';
         });
@@ -511,13 +573,14 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         if (transcript.isEmpty) return;
 
         if (_isFullAIChatMode) {
-          if (_isAIChatLoading || _isTtsSpeaking) return;
+          if ((_isAIChatLoading || _isTtsSpeaking) && !_heardWhileBusy(transcript)) return;
+          _conversation.userSpeech();
           final merged = Platform.isAndroid
               ? mergeTranscript(_lastTranscript, transcript)
               : transcript;
           setState(() {
             _lastTranscript = merged;
-            _partialTranscript = merged;
+            _partialTranscript = _shownTranscript(merged);
             _currentSpeechSentence = merged;
             _message = 'Listening...';
           });
@@ -532,7 +595,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
             : transcript;
         setState(() {
           _lastTranscript = merged;
-          _partialTranscript = merged;
+          _partialTranscript = _shownTranscript(merged);
           _currentSpeechSentence = merged;
           _message = 'Listening...';
         });
@@ -692,7 +755,23 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   Future<void> _runSpeakerVerificationOnboarding() async {
     await _runBusy(() async {
       await _ensureMicPermission();
+      // 2026-11-22 phone: the wake word kept its recorder during the recording (Android), a sample did not come within 30 s and the
+      // error said "restart the app". Now the wake word releases the microphone, each sample may take 60 s, and a failure brings
+      // back this screen with a notice.
+      final wakeword = _wakeword;
+      final pausedWakeWord = wakeword != null && await wakeword.pauseDetection(stopMic: Platform.isAndroid);
+      var resumedWakeWord = false;
+      Future<void> resumeWakeWord() async {
+        if (!pausedWakeWord || resumedWakeWord) return;
+        resumedWakeWord = true;
+        try {
+          await wakeword.unPauseDetection();
+        } catch (error) {
+          _log('SV resume wake word: $error');
+        }
+      }
       setState(() {
+        _svPromptNotice = '';
         _stage = _Stage.svStatus;
         _svStatusPhase = _SVStatusPhase.onboarding;
         _svStatusCanContinue = false;
@@ -789,7 +868,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           if (Platform.isIOS) {
             final nativeResult = await controller
                 .getNextEmbeddingFromMic()
-                .timeout(const Duration(seconds: 30));
+                .timeout(_svSampleTimeout);
             step = _handleSVStepPayload(
               nativeResult,
               beforeCollected,
@@ -820,6 +899,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         await controller.setEnrollmentJson(enrollmentJson);
         await controller.destroy();
         _svController = null;
+        await resumeWakeWord();
         final enrollmentJsonPath = completedEnrollmentPath;
         if (enrollmentJsonPath != enrollmentFile.path ||
             !await enrollmentFile.exists()) {
@@ -835,11 +915,17 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         });
 
         await _startSpeakerVerificationVerify(enrollmentJson);
-      } catch (_) {
+      } catch (error) {
+        _log('SV enrollment failed: $error');
         await _stopSpeakerVerificationVerify();
         _enrollmentJsonPath = null;
-        if (mounted) setState(() => _stage = _Stage.svPrompt);
-        rethrow;
+        if (mounted) {
+          setState(() {
+            _stage = _Stage.svPrompt;
+            _svPromptNotice = svEnrollmentFailedNotice;
+            _message = '';
+          });
+        }
       } finally {
         if (identical(_svController, controller)) {
           _svController = null;
@@ -848,6 +934,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         await errorSub.cancel();
         await progressSub.cancel();
         await doneSub.cancel();
+        await resumeWakeWord();
       }
     });
   }
@@ -966,8 +1053,10 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     if (!mounted) return;
     setState(() => _message = 'Initializing wake word...');
     _log('Initializing wake word instance $_wakewordInstanceId');
-    await setWakewordAudioRoutingConfig(_defaultAudioRoutingConfig);
-    await _speech.setAudioRoutingConfig(_defaultAudioRoutingConfig.toJson());
+    // interrupt mode turns echo cancellation on (lib/conversation/conversation_settings.dart)
+    final routing = routingConfigForConversation(_defaultAudioRoutingConfig, await _conversationLoad);
+    await setWakewordAudioRoutingConfig(routing);
+    await _speech.setAudioRoutingConfig(routing.toJson());
     final wakeword = createKeyWordFlutterPCInstance(_wakewordInstanceId);
     _wakeword = wakeword;
     _log(
@@ -1162,6 +1251,13 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   }
 
   Future<void> _handleWakeWord(String rawWakeWord) async {
+    // In the conversation (lib/conversation): the wake word wakes it from sleep or stops the agent.
+    if (_conversation.active) {
+      _log('[Conversation] wake word in the conversation (${_conversation.phase.name})');
+      _wakePrefixPending = true;
+      _conversation.wakeWord();
+      return;
+    }
     if (_isBusy || _isHandlingWakeWord || !_wakeWordArmed) {
       _log(
         'Wake-word event ignored: busy=$_isBusy handling=$_isHandlingWakeWord armed=$_wakeWordArmed',
@@ -1277,6 +1373,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   Future<void> _goBackToModeSelection() async {
     if (_isSwitchingMode) return;
     _isSwitchingMode = true;
+    // back to the mode menu: the wake word stays paused there, as before the conversation settings
+    _conversation.leave(rearmWakeWord: false);
     _busyEpoch++;
     _beginSpeechUiEpoch();
     _speechSilenceTimer?.cancel();
@@ -1313,6 +1411,11 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   }
 
   Future<void> _stopPlayback() async {
+    // The conversation (lib/conversation): stopping the agent's voice listens for the next request.
+    if (_conversation.phase == ConversationPhase.busy && _conversation.agentSpeaking) {
+      _conversation.tapToTalk();
+      return;
+    }
     _busyEpoch++;
     final resume = _isFullAIChatMode || _speechEchoSessionActive;
     final epoch = _beginSpeechUiEpoch();
@@ -1324,7 +1427,14 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       _isAIChatLoading = false;
       _isBusy = false;
     });
-    if (resume) await _resumeSpeechAfterTts();
+    if (resume) {
+      if (_conversation.phase == ConversationPhase.busy) {
+        _conversation.replyFinished(); // stopped while thinking: the controller hands the microphone back
+        await _conversation.idle();
+      } else {
+        await _resumeSpeechAfterTts();
+      }
+    }
   }
 
   void _showChatHistory() {
@@ -1383,7 +1493,16 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     // Load the model now, in the background, never in the middle of a turn.
     if (_isLocalAIChat) _warmUpLocalModel();
     await _speech.pauseSpeechRecognition();
-    await _resumeSpeechAfterTts();
+    // Wake word before each request: recognition stays paused and the conversation starts asleep (_conversation.enter); the
+    // wake word that opened this screen is not a request.
+    if (_conversationSettings.wakeWord) {
+      _wakePrefixPending = false;
+    } else {
+      await _resumeSpeechAfterTts(const Duration(milliseconds: 300), 0);
+    }
+    // Android with echo cancellation for the interrupt mode (iOS has it in the routing JSON)
+    if (Platform.isAndroid && _conversationSettings.interrupt) unawaited(_applyConversationAudio(_conversationSettings));
+    _conversation.enter();
   }
 
   /// The Local AI Chat conversation so far, oldest first, in the agent's
@@ -1537,9 +1656,13 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
 
   /// One Local AI Chat turn: streams the on-device reply and speaks each
   /// sentence as soon as it is complete. Errors are spoken as they are.
-  Future<void> _answerWithLocalModel(String userText) async {
+  Future<void> _answerWithLocalModel(String rawText) async {
+    final userText = _dropWakePhrase(rawText);
+    if (userText.isEmpty) return; // only the wake phrase so far: wait for the request
     final epoch = _speechUiEpoch;
     _isAIChatLoading = true;
+    _spokenThisTurn = '';
+    _conversation.turnStarted();
     final history = _localChatHistory();
     _chatHistory.add({'role': 'user', 'text': userText});
     try {
@@ -1547,8 +1670,9 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       if (!_isSpeechUiEpochCurrent(epoch)) return;
 
       // STT noise ("The.", "But.", "Alma Alma."): not sent to the model (flow/fragments.dart, same rules as the RN example).
-      if (isNoiseFragment(userText)) {
-        final reply = didNotCatch[currentAppLanguage] ?? didNotCatch['en']!;
+      // "ja ja" / "sí sí" answering a Basic-language question is a yes, not noise
+      if (isNoiseFragment(userText) && normalizeYesNo(userText, currentAppLanguage) == null) {
+        final reply = didNotCatch[currentAppLanguage] ?? basicMessage(currentAppLanguage, 'didNotCatch') ?? didNotCatch['en']!;
         _log('noise fragment, asking to repeat: $userText');
         _chatHistory.add({'role': 'model', 'text': reply});
         setState(() {
@@ -1606,9 +1730,13 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       late void Function(String) speakSentence;
       speakSentence = (String raw) {
         // Car demo: the model's bare "Done." is never a confirmation (the app says what it did) -> "didn't catch that".
-        final sentence = currentLocalDemo == 'car' && isBareDone(raw) ? (didNotCatch[currentAppLanguage] ?? didNotCatch['en']!) : raw;
+        final sentence = currentLocalDemo == 'car' && isBareDone(raw)
+            ? (didNotCatch[currentAppLanguage] ?? basicMessage(currentAppLanguage, 'didNotCatch') ?? didNotCatch['en']!)
+            // Basic language: a sentence the model said in Portuguese becomes "say it again?" in the user's language
+            : (currentLocalDemo == 'car' ? basicReplyFix(raw, currentAppLanguage) : null) ?? raw;
         // Straight to the speech queue: it prepares the next sentences while
         // this one plays. `spoken` completes when everything queued is spoken.
+        _spokenThisTurn += ' $sentence';
         spoken = _speech.speak(
           _applyTtsTextPolicy(normalizeTextForSpeech(sentence)),
           speakerId: _speakerId,
@@ -1630,7 +1758,12 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         // a short filler to say, so the wait isn't silent. Fillers aren't part
         // of the reply or the history.
         if (_lastTurn.outcome != null) setState(() => _lastTurn = const TurnInfo());
-        final turn = await _localLlm.generateReplyStream(history, userText, (delta) {
+        // Basic language (car/basic_language.dart): a plain "ja" / "sí" / "oui" to the agent's question reaches the agent as "yes"
+        final agentText = currentLocalDemo == 'car'
+            ? normalizeYesNo(userText, currentAppLanguage) ?? withCarHints(userText, currentAppLanguage)
+            : userText;
+        beginBasicTurn();
+        final turn = await _localLlm.generateReplyStream(history, agentText, (delta) {
           if (!_isSpeechUiEpochCurrent(epoch)) return;
           reply += delta;
           final split = splitCompletedSentences(pendingSentence + delta);
@@ -1690,6 +1823,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         _lastTranscript = '';
         _message = 'Speaking Local AI reply...';
       });
+      _conversation.replySpeaking();
       await spoken;
       // Everything was spoken: show the reply with its original formatting.
       if (_isSpeechUiEpochCurrent(epoch) && mounted) setState(() => _aiChatResponse = reply);
@@ -1717,7 +1851,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           _partialTranscript = '';
         });
         if (_isFullAIChatMode && _stage == _Stage.home) {
-          await _resumeSpeechAfterTts();
+          await _reopenAfterReply();
         }
       }
     }
@@ -1741,6 +1875,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     }
     final epoch = _speechUiEpoch;
     _isAIChatLoading = true;
+    _spokenThisTurn = '';
+    _conversation.turnStarted();
     _chatHistory.add({'role': 'user', 'text': cleaned});
     try {
       await _pauseSpeechForTts();
@@ -1805,7 +1941,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
           _partialTranscript = '';
         });
         if (_isFullAIChatMode && _stage == _Stage.home) {
-          await _resumeSpeechAfterTts();
+          await _reopenAfterReply();
         }
       }
     }
@@ -2010,6 +2146,10 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     if (!_isSpeechUiEpochCurrent(epoch)) return;
     await _applySelectedTtsVoice();
     if (!_isSpeechUiEpochCurrent(epoch)) return;
+    if (_isAIChatLoading) {
+      _spokenThisTurn += ' $text';
+      _conversation.replySpeaking();
+    }
     await _speech.speak(
       _applyTtsTextPolicy(text),
       speakerId: speakerId,
@@ -2025,6 +2165,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
 
   Future<void> _resumeSpeechAfterTts([
     Duration settleDelay = const Duration(milliseconds: 300),
+    int preFetchMs = 0,
   ]) async {
     final epoch = _speechUiEpoch;
     if (!mounted ||
@@ -2034,7 +2175,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
     }
     _suppressSpeechResults = true;
     try {
-      await _speech.unPauseSpeechRecognition(-1);
+      await _speech.unPauseSpeechRecognition(-1, preFetchMs: preFetchMs);
       await Future<void>.delayed(settleDelay);
       if (!_isSpeechUiEpochCurrent(epoch)) return;
       if (Platform.isAndroid && _isFullAIChatMode) {
@@ -2055,6 +2196,91 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       }
     } finally {
       if (_isSpeechUiEpochCurrent(epoch)) _suppressSpeechResults = false;
+    }
+  }
+
+  /// The controller's openMic: a fresh transcript, then the recognizer (quietly while the agent still talks).
+  Future<void> _openConversationMic(int preFetchMs, String why) async {
+    _speechSilenceTimer?.cancel();
+    _lastTranscript = '';
+    if (_conversation.duplexOpen) {
+      // interrupt mode: under the reply; the status line keeps saying the reply
+      await _speech.unPauseSpeechRecognition(-1, preFetchMs: preFetchMs);
+      return;
+    }
+    await _resumeSpeechAfterTts(const Duration(milliseconds: 300), preFetchMs);
+  }
+
+  /// A request ended: the conversation mode decides what's next (listen again, or back to the wake word).
+  Future<void> _reopenAfterReply() async {
+    if (_conversation.phase == ConversationPhase.busy) {
+      _conversation.replyFinished(_spokenThisTurn);
+      await _conversation.idle();
+    } else if (!_conversation.active) {
+      await _resumeSpeechAfterTts(); // a request outside the conversation screen
+    }
+  }
+
+  /// Speech heard while a request is answered: true when the user interrupted the reply (interrupt mode).
+  bool _heardWhileBusy(String text) {
+    if (!_conversation.heardWhileBusy(text, _spokenThisTurn)) return false;
+    _endReplyNow('the user interrupted');
+    return true;
+  }
+
+  /// Interrupt mode, the stop word or a tap: the reply ends now (a new speech epoch drops the rest of the request).
+  void _endReplyNow(String why) {
+    if (!_isAIChatLoading && !_isTtsSpeaking) return;
+    _log('[Conversation] reply stopped: $why');
+    _beginSpeechUiEpoch();
+    _speechSilenceTimer?.cancel();
+    _lastTranscript = '';
+    if (!mounted) return;
+    setState(() {
+      _isAIChatLoading = false;
+      _isTtsSpeaking = false;
+      _partialTranscript = '';
+      _message = 'Stopped. Listening...';
+    });
+  }
+
+  /// What the screen shows while the request is being said: after the wake word, without the wake phrase (as the agent gets it).
+  String _shownTranscript(String text) =>
+      _wakePrefixPending && _conversationSettings.wakeWord ? dropWakePhrase(text, _lastWakeWord) : text;
+
+  /// The wake-word mode: a transcript that starts with the wake phrase (pre-fetched audio) goes on without it.
+  /// Only the wake phrase so far: '' (nothing is sent; the next words complete the request).
+  String _dropWakePhrase(String text) {
+    if (!_wakePrefixPending || !_conversationSettings.wakeWord) return text;
+    final stripped = dropWakePhrase(text, _lastWakeWord);
+    if (stripped.isNotEmpty) _wakePrefixPending = false;
+    if (stripped != text.trim()) _log('[Conversation] "$text" -> "$stripped" (the wake phrase)');
+    return stripped;
+  }
+
+  /// New conversation settings: the end-of-speech silence, the controller's timeouts and, when interrupting is turned
+  /// on or off, echo cancellation (the routing JSON for STT, TTS and the wake word; Android's AEC switch).
+  void _applyConversationSettings(ConversationSettings next, {required bool save, required bool audio}) {
+    final previous = _conversationSettings;
+    if (mounted) {
+      setState(() => _conversationSettings = next);
+    } else {
+      _conversationSettings = next;
+    }
+    _conversation.update(next);
+    _log('[Conversation] settings ${jsonEncode(next.toJson())}');
+    if (audio && previous.interrupt != next.interrupt) unawaited(_applyConversationAudio(next));
+    if (save) unawaited(saveConversationSettings(next));
+  }
+
+  Future<void> _applyConversationAudio(ConversationSettings settings) async {
+    final routing = routingConfigForConversation(_defaultAudioRoutingConfig, settings);
+    try {
+      await setWakewordAudioRoutingConfig(routing);
+      await _speech.setAudioRoutingConfig(routing.toJson());
+      if (Platform.isAndroid) await _speech.setAECEnabled(settings.interrupt);
+    } catch (error) {
+      _log('[Conversation] echo cancellation setting failed (ignored): $error');
     }
   }
 
@@ -2254,7 +2480,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
       completeError(StateError('Speaker verification error: $event'));
     });
 
-    timeout = Timer(const Duration(seconds: 30), () {
+    timeout = Timer(_svSampleTimeout, () {
       completeError(
         TimeoutException(
           'Timed out waiting for speaker verification progress. Check microphone permission and speak into the device.',
@@ -3196,6 +3422,8 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
               const _PromptTitle('Choose Your Language'),
               const SizedBox(height: 8),
               const Text('The language for speech recognition and the voices.', textAlign: TextAlign.center, style: _Styles.body),
+              const Text('Car agent: tuned for English and Português (Brasil). Other languages are Basic: it asks before every action.',
+                  textAlign: TextAlign.center, style: _Styles.body),
               const SizedBox(height: 18),
               for (final l in appLanguageInfos.where((l) => !l.hidden)) ...[
                 _ModeButton(
@@ -3368,6 +3596,13 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
                     : 'Create a speaker signature now, or skip speaker verification.',
                 style: _Styles.body,
               ),
+              if (_svPromptNotice.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  _svPromptNotice,
+                  style: _Styles.body.copyWith(color: const Color(0xFFFBBF24)),
+                ),
+              ],
               const SizedBox(height: 20),
               if (hasSavedEnrollment) ...[
                 _PrimaryButton(
@@ -3541,6 +3776,15 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
         );
       case _Stage.home:
         return _HomeScreen(
+          conversationBar: _isFullAIChatMode
+              ? ConversationBar(
+                  settings: _conversationSettings,
+                  onChanged: (next) => _applyConversationSettings(next, save: true, audio: true),
+                  phase: _conversationPhase,
+                  wakePhrase: _lastWakeWord,
+                  onTapToTalk: _conversation.tapToTalk,
+                )
+              : null,
           message: _message,
           voiceName: _voiceName,
           wakeWord: _lastWakeWord,
@@ -3656,8 +3900,11 @@ class _HomeScreen extends StatelessWidget {
     required this.lastTranscript,
     required this.partialTranscript,
     required this.introSpeaking,
+    this.conversationBar,
   });
 
+  /// The microphone line and the settings icon (lib/conversation) on the chat screens.
+  final Widget? conversationBar;
   final String message;
   final String voiceName;
   final String wakeWord;
@@ -3777,6 +4024,7 @@ class _HomeScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _PromptTitle(localDemo == 'car' ? 'Car demo' : 'Calories demo'),
+          ?conversationBar,
           if (localDemo == 'car') const CarCard() else if (calorieStore != null) CaloriesCard(store: calorieStore!),
           _InfoBlock(
             label: 'You said${isWorking ? ' · working...' : ignoredText != null ? ' · not for me (ignored)' : ''}',
@@ -3837,6 +4085,7 @@ class _HomeScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _PromptTitle(title),
+          if (isFullAIChatMode && conversationBar != null) conversationBar!,
           if (!active) ...[
             const SizedBox(height: 12),
             Text(message, textAlign: TextAlign.center, style: _Styles.body),
