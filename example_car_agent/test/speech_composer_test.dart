@@ -26,7 +26,7 @@ void main() {
         ('close_doors', 'I closed all the doors.', true, {}),
         ('lock_car', 'I locked the car.', true, {}),
       ], 'I closed all the doors. I locked the car.'),
-      'All set. I closed all the doors and locked the car. Everything is secure.',
+      'I closed all the doors and locked the car. Everything is secure.',
     );
   });
   test('the offer: unlock then open', () {
@@ -35,7 +35,7 @@ void main() {
         ('unlock_car', 'I unlocked the car.', true, {}),
         ('open_door', 'I opened all the doors.', true, {}),
       ], 'I unlocked the car. I opened all the doors.'),
-      'All set. I unlocked the car and opened all the doors. Come on in!',
+      'I unlocked the car and opened all the doors. Come on in!',
     );
   });
   test('pt-BR, three actions', () {
@@ -49,17 +49,17 @@ void main() {
         'Fechei todas as janelas. Fechei todas as portas. Tranquei o carro.',
         'pt-BR',
       ),
-      'Pronto, já fiz isso para você. Fechei todas as janelas, fechei todas as portas e tranquei o carro. Agora o carro está todo seguro.',
+      'Fechei todas as janelas, fechei todas as portas e tranquei o carro. Agora o carro está todo seguro.',
     );
   });
   test('one action: a warm opener and, every other time, a closing line that fits', () {
-    expect(run([('lock_car', 'I locked the car.', true, {})], 'I locked the car.'), "Sure, you got it. I locked the car. You're good to go.");
-    expect(run([('unlock_car', 'Destranquei o carro.', true, {})], 'Destranquei o carro.', 'pt-BR'), 'Claro, já fiz isso para você. Destranquei todas as portas do carro. Pode entrar, o carro já está aberto.');
+    expect(run([('lock_car', 'I locked the car.', true, {})], 'I locked the car.'), "I locked the car. You're good to go.");
+    expect(run([('unlock_car', 'Destranquei o carro.', true, {})], 'Destranquei o carro.', 'pt-BR'), 'Destranquei todas as portas do carro. Pode entrar, o carro já está aberto.');
     // pt-BR: a short sentence said on its own is said longer (tested wording); a merged sentence keeps the short form (as the RN example)
     expect(run([('lock_car', 'Tranquei o carro.', true, {})], 'Tranquei o carro.', 'pt-BR'),
-        'Claro, já fiz isso para você. Tranquei todas as portas do carro. Pode ficar tranquilo, está tudo seguro.');
+        'Tranquei todas as portas do carro. Pode ficar tranquilo, está tudo seguro.');
     expect(run([('play_media', 'Tocando Anitta.', true, {'query': 'Anitta'})], 'Tocando Anitta.', 'pt-BR'),
-        'Claro, já fiz isso para você. Agora tocando Anitta para você. Aproveite a música durante a viagem.');
+        'Agora tocando Anitta para você. Aproveite a música durante a viagem.');
     expect(
       run([('navigate_to', 'Navigating to home: about 24 minutes, 18 km.', true, {})], 'Navigating to home: about 24 minutes, 18 km.', 'en', true),
       "Navigating home: about 24 minutes, 18 km. Let's go!",
@@ -73,7 +73,7 @@ void main() {
     beginCarTurn();
     resetSpeechVariant();
     noteCarSay('set_window', "I opened the driver's window.", true, args: {'window': 'driver', 'position': 'open'});
-    expect(composeCarSpeech("I opened the driver's window.", carTurnActions(), 'en'), "Sure, you got it. I opened the driver's window. Enjoy the fresh air.");
+    expect(composeCarSpeech("I opened the driver's window.", carTurnActions(), 'en'), "I opened the driver's window. Enjoy the fresh air.");
     beginCarTurn();
     noteCarSay('set_window', "I opened the driver's window.", true, args: {'window': 'driver', 'position': 'open'});
     expect(composeCarSpeech("I opened the driver's window.", carTurnActions(), 'en'), "You got it! I opened the driver's window.");
@@ -121,11 +121,11 @@ void main() {
   });
   test('in a full reply: smoother words, the same facts (same as RN)', () {
     expect(run([('set_temperature', 'I raised the whole cabin to 23°C.', true, {'change': 2})], 'I raised the whole cabin to 23°C.'),
-        "Sure, you got it. I turned the temperature up to 23°C. It'll warm up soon.");
+        "I turned the temperature up to 23°C. It'll warm up soon.");
     expect(
       run([('navigate_to', 'Indo para aeroporto: cerca de 24 minutos, 18 km.', true, {'destination': 'aeroporto'})],
           'Indo para aeroporto: cerca de 24 minutos, 18 km.', 'pt-BR'),
-      'Claro, já fiz isso para você. Indo para o aeroporto: cerca de 24 minutos, 18 km. Vamos lá, tenha uma ótima viagem!',
+      'Indo para o aeroporto: cerca de 24 minutos, 18 km. Vamos lá, tenha uma ótima viagem!',
     );
     expect(run([('set_temperature', "I didn't change it: the temperature must be between 16 and 30.", false, {})],
         "I didn't change it: the temperature must be between 16 and 30."), 'Sorry, the temperature only goes from 16 to 30.');
@@ -167,7 +167,7 @@ void main() {
     noteCarSay('set_seat_climate', 'I set the heater in the passenger seat to high.', true,
         args: {'seat': 'passenger', 'feature': 'heater', 'level': 'high'}, kind: 'did');
     expect(composeCarSpeech("I set the heater in the driver's seat to high. I set the heater in the passenger seat to high.", carTurnActions(), 'en'),
-        "All set. I set the driver's seat heater to high and set the passenger seat heater to high. Nice and cozy.");
+        "I set the driver's seat heater to high and set the passenger seat heater to high. Nice and cozy.");
   });
   test('an undo is said as putting it back, its sentence smoothed like any other (2026-11-21)', () {
     expect(run([('set_temperature', 'Undone. I set the whole cabin to 21°C.', false, {'temperature': 21})], 'Undone. I set the whole cabin to 21°C.'),

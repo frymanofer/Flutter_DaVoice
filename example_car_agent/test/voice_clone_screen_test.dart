@@ -21,7 +21,7 @@ Widget _screen({required bool mic, required bool recording, String? sample, Stri
         error: error,
         resultVoice: result,
         resultWeak: true,
-        folder: '/storage/emulated/0/Android/data/com.davoice.flutter_davoice_car_agent/files/cloned_voices',
+        folder: '/storage/emulated/0/Android/data/io.davoice.flutter.caragent/files/cloned_voices',
         scrollController: ScrollController(),
         recordButtonKey: GlobalKey(),
         onNameChanged: (_) {},

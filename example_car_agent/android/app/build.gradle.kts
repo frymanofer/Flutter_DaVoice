@@ -4,8 +4,8 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// Flutter's current template defaults to API 24, but Davoice supports API 23.
-val davoiceMinSdk = 23
+// DaVoice supports API 23, but url_launcher_android 6.3.32 (the privacy policy link) needs API 24.
+val davoiceMinSdk = 24
 
 android {
     namespace = "com.davoice.flutter_davoice_example"
@@ -19,7 +19,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.davoice.flutter_davoice_car_agent"
+        applicationId = "io.davoice.flutter.caragent"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = davoiceMinSdk

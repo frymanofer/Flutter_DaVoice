@@ -15,6 +15,7 @@ import 'conversation/conversation_controller.dart';
 import 'conversation/conversation_settings.dart';
 import 'conversation/conversation_store.dart';
 import 'flow/app_language.dart';
+import 'flow/end_of_speech.dart';
 import 'flow/fragments.dart';
 import 'local_llm/demo.dart';
 import 'speaker_verification/current_speaker.dart';
@@ -49,7 +50,16 @@ import 'package:flutter_wake_word/flutter_wake_word.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+/// "14:47:19.935": every debugPrint line of the app starts with the time, so a device log shows how long each step took.
+String clockStamp([DateTime? at]) {
+  final t = at ?? DateTime.now();
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${two(t.hour)}:${two(t.minute)}:${two(t.second)}.${t.millisecond.toString().padLeft(3, '0')}';
+}
+
 Future<void> main() async {
+  final printLine = debugPrint;
+  debugPrint = (String? message, {int? wrapWidth}) => printLine(message == null ? null : '[${clockStamp()}] $message', wrapWidth: wrapWidth);
   WidgetsFlutterBinding.ensureInitialized();
   // Local AI Chat's behavior and data (assets/agent/), used synchronously later.
   await loadAgentPacks();
@@ -372,6 +382,15 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
   bool _wakePrefixPending = false;
 
   Duration get _speechSilenceTimeout => Duration(milliseconds: _conversationSettings.endOfSpeechMs);
+
+  /// The end-of-speech silence for the words heard so far: longer when they cannot end a request ("Set the", "Please";
+  /// flow/end_of_speech.dart).
+  Duration _silenceAfter(String text) {
+    final base = _conversationSettings.endOfSpeechMs;
+    final ms = silenceFor(text, base, currentAppLanguage);
+    if (ms != base) _log('[AIChat] sounds unfinished, waiting $ms ms: "$text"');
+    return Duration(milliseconds: ms);
+  }
   final List<Map<String, dynamic>> _geminiConversation = [];
   Timer? _speechSilenceTimer;
   int _speechUiEpoch = 0;
@@ -2132,7 +2151,7 @@ class _DavoiceExampleHomeState extends State<DavoiceExampleHome> {
 
   void _scheduleAIChatTimeout() {
     _speechSilenceTimer?.cancel();
-    _speechSilenceTimer = Timer(_speechSilenceTimeout, () {
+    _speechSilenceTimer = Timer(_silenceAfter(_lastTranscript), () {
       final text = _lastTranscript.trim();
       if (text.isEmpty || _isAIChatLoading || !_isFullAIChatMode) return;
       unawaited(_answerLikeVoiceAssistant(text));

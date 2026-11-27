@@ -46,7 +46,7 @@ flutter run                         # a connected phone; or: flutter build apk /
 ```
 
 - Requirements: Flutter 3.47 or newer (Dart 3.12). Android `minSdk` 23 (`android/app/build.gradle.kts`).
-- The app installs as `com.davoice.flutter_davoice_example`.
+- The app installs as `io.davoice.flutter.example`.
 - **License:** `licensekey.txt` (bundled) holds a temporary DaVoice key; the license field in the app replaces it. In your own app,
   use your own key (info@davoice.io).
 - **Optional keys** (Gemini for the Full AI Chat mode, web search, USDA food lookup, a remote MCP server): `config/local.config.ts`

@@ -269,13 +269,15 @@ List<String> _sentencesOf(String text) {
   return out;
 }
 
-/// One action that ran, said with a warm opener (none when the car already said "Got it.") and, every other time, its closing line.
+/// One action that ran, said with ONE friendly phrase (2026-11-25: opener + sentence + closing line made every reply long): every other
+/// time its closing line when it has one, else a warm opener (none when the car already said "Got it.").
 String _friendlyOne(CarTurnAction a, String lang, bool acked, [bool driving = false]) {
   final v = _variant++;
+  final tail = v % 2 == 0 ? _friendlyTail(a, lang, driving) : null;
+  if (tail != null) return '${a.say} $tail';
   final openers = _friendlyOpeners[lang]!;
   final opener = acked ? '' : '${openers[v % openers.length]} ';
-  final tail = v % 2 == 0 ? _friendlyTail(a, lang, driving) : null;
-  return '$opener${a.say}${tail != null ? ' $tail' : ''}';
+  return '$opener${a.say}';
 }
 
 /// "I closed all the doors." -> "closed all the doors" (en); "Fechei todas as portas." -> "fechei todas as portas" (pt); else null.
@@ -324,7 +326,9 @@ String? _merged(List<CarTurnAction> run, bool pt, bool friendly, [bool driving =
       if (tail != null) break;
     }
   }
-  return '$opener $sentence.${secures ? ' ${_secure[lang]}' : ''}${tail != null ? ' $tail' : ''}';
+  // one extra phrase at most (2026-11-25, the reply is said before the driver can talk again): the closing line, else the opener
+  final extra = secures ? _secure[lang] : tail;
+  return extra != null ? '$sentence. $extra' : '$opener $sentence.';
 }
 
 /// The reply text as the driver should hear it. [text] = what the agent said (core order); [actions] = this turn's tool sentences in order.

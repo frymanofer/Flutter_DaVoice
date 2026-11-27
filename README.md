@@ -1,6 +1,6 @@
 # Flutter DaVoice Example App
 
-[License](LICENSE) · [Model and Voice Asset Notice](MODEL_NOTICES.md)
+[License](LICENSE) · [Model and Voice Asset Notice](MODEL_NOTICES.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 Standalone Flutter example app for the DaVoice voice stack.
 

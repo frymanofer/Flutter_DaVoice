@@ -44,4 +44,22 @@ void main() {
     resetFollowUp();
     expect([carTurnInput('Never mind', 'en', null).reply, carTurnInput('Cancel', 'en', null).reply], ['Okay.', 'No problem.']);
   });
+
+  test('something the car cannot do is offered the way it can ("Lock the sunroof" -> close it); a yes sends that request', () {
+    resetFollowUp();
+    expect(carTurnInput('Can you lock the sunroof?', 'en', null).reply, "I can't lock the sunroof, but I can close it. Want me to close it?");
+    expect(carTurnInput('Yes', 'en', null).text, 'Close the sunroof');
+    resetFollowUp();
+    carTurnInput('Lock the sunroof', 'en', null);
+    expect(carTurnInput('Close it', 'en', null).text, 'Close the sunroof');
+    resetFollowUp();
+    carTurnInput('Unlock the windows', 'en', null);
+    expect(carTurnInput('No', 'en', null).reply, 'Okay.');
+    resetFollowUp();
+    carTurnInput('Tranca o teto solar', 'pt-BR', null);
+    expect(carTurnInput('Sim', 'pt-BR', null).text, 'Fecha o teto solar');
+    resetFollowUp();
+    carTurnInput('Destranca os vidros', 'pt-BR', null);
+    expect(carTurnInput('Pode abrir', 'pt-BR', null).text, 'Abre todos os vidros');
+  });
 }

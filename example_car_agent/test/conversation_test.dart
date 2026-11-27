@@ -70,8 +70,8 @@ void main() {
       expect(defaultConversationSettings.toJson(), {
         'interrupt': false,
         'wakeWord': false,
-        'wakeWordMode': {'endOfSpeechMs': 2000, 'listenMs': 8000, 'followUpMs': 8000, 'preFetchMs': 2000, 'stopWord': false},
-        'freeMode': {'endOfSpeechMs': 2000, 'idleMs': 0},
+        'wakeWordMode': {'endOfSpeechMs': 1500, 'listenMs': 8000, 'followUpMs': 8000, 'preFetchMs': 2000, 'stopWord': false},
+        'freeMode': {'endOfSpeechMs': 1500, 'idleMs': 0},
       });
       expect(defaultConversationSettings.description, 'Just talk · take turns');
     });
@@ -90,7 +90,7 @@ void main() {
         'interrupt': true,
         'wakeWord': false,
         'wakeWordMode': {'endOfSpeechMs': 500, 'listenMs': 7000, 'followUpMs': 0, 'preFetchMs': 3000, 'stopWord': false},
-        'freeMode': {'endOfSpeechMs': 2000, 'idleMs': 0},
+        'freeMode': {'endOfSpeechMs': 1500, 'idleMs': 0},
       });
       expect(normalizeConversationSettings(jsonDecode(jsonEncode(s.toJson()))), s);
     });

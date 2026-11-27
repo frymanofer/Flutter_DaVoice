@@ -46,7 +46,7 @@ flutter run                         # um celular conectado; ou: flutter build ap
 ```
 
 - Requisitos: Flutter 3.47 ou mais novo (Dart 3.12). Android `minSdk` 23 (`android/app/build.gradle.kts`).
-- O app instala como `com.davoice.flutter_davoice_example`.
+- O app instala como `io.davoice.flutter.example`.
 - **Licença:** `licensekey.txt` (dentro do app) traz uma chave temporária da DaVoice; o campo de licença no app a substitui. No
   seu app, use a sua chave (info@davoice.io).
 - **Chaves opcionais** (Gemini para o modo Full AI Chat, busca na web, consulta de alimentos USDA, um servidor MCP remoto):

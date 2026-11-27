@@ -245,11 +245,13 @@ String? _pluralSeats(String userText, String lang) {
 final _offerVerbs = {
   'en': [
     (RegExp(r'^close\b', caseSensitive: false), RegExp(r'^(?:close|shut)$')),
+    (RegExp(r'^open\b', caseSensitive: false), RegExp(r'^open$')),
     (RegExp(r'^lock\b', caseSensitive: false), RegExp(r'^lock$')),
     (RegExp(r'^(?:heat|cool)\b', caseSensitive: false), RegExp(r'^(?:turn on|switch on|heat|cool|turn on)$')),
   ],
   'pt': [
     (RegExp(r'^fecha\b', caseSensitive: false), RegExp(r'^(?:fecha|fechar|feche|pode fechar)$')),
+    (RegExp(r'^abre\b', caseSensitive: false), RegExp(r'^(?:abre|abrir|abra|pode abrir)$')),
     (RegExp(r'^tranca\b', caseSensitive: false), RegExp(r'^(?:tranca|trancar|tranque|pode trancar)$')),
     (RegExp(r'^(?:esquenta|refresca)\b', caseSensitive: false), RegExp(r'^(?:liga|ligar|ligue|pode ligar|esquenta|refresca)$')),
   ],
@@ -377,7 +379,42 @@ void noteCarSpoken(String text) {
     _pending = (kind: 'seat', request: seats);
     return (text: null, reply: _whichSeat[lang]);
   }
+  // something the car can't do, with the action it can ("Lock the sunroof" -> close it): asked, nothing runs without a yes
+  final near = _nearMiss(userText, lang);
+  if (near != null) {
+    _pending = (kind: 'command', request: near.request);
+    return (text: null, reply: near.reply);
+  }
   return (text: _canonical(userText, lang) ?? userText, reply: null);
+}
+
+/// "Lock the sunroof" / "Unlock the windows": the car has no such lock (2026-11-25 iPhone: the model declined and the driver heard "not
+/// available in this demo"). The app says what it can do instead and asks; a yes ("Yes", "Close it") sends that request to the agent.
+({String reply, String request})? _nearMiss(String userText, String lang) {
+  final f = foldText(userText);
+  if (lang == 'en') {
+    final m = RegExp(r'^(?:(?:can|could|would|will) you |please )*(lock|unlock) (?:up )?(?:the |my |our |all the |all )?(sunroof|moonroof|roof|windows)(?: please| for me)?$').firstMatch(f);
+    if (m == null) return null;
+    final lock = m.group(1) == 'lock';
+    final roof = m.group(2) != 'windows';
+    final what = roof ? 'the sunroof' : 'the windows';
+    final verb = lock ? 'close' : 'open';
+    final it = roof ? 'it' : 'them';
+    return (
+      reply: "I can't ${m.group(1)} $what, but I can $verb $it. Want me to $verb $it?",
+      request: roof ? '${lock ? 'Close' : 'Open'} the sunroof' : '${lock ? 'Close' : 'Open'} all the windows',
+    );
+  }
+  // pt-BR: every sentence about six words or more; both tested 2026-11-25 (brv3 voice, 5/5 heard right; "Quer que eu feche..." was 3/5) (car/speech_composer.dart, the pt-BR voice)
+  final m = RegExp(r'^(?:(?:voce|vc) pode |pode |por favor )*(tranca|trancar|tranque|destranca|destrancar|destranque) (?:o |os |as |todos os |todas as )?(teto solar|teto|vidros|janelas)(?: do carro)?(?: por favor| pra mim)?$').firstMatch(f);
+  if (m == null) return null;
+  final lock = !m.group(1)!.startsWith('des');
+  final roof = m.group(2)!.startsWith('teto');
+  final said = roof ? 'o teto solar do carro' : 'as janelas do carro';
+  return (
+    reply: 'Não consigo ${lock ? 'trancar' : 'destrancar'} $said. Posso ${lock ? 'fechar' : 'abrir'} ${roof ? 'o teto solar' : 'todas as janelas'} para você?',
+    request: roof ? '${lock ? 'Fecha' : 'Abre'} o teto solar' : '${lock ? 'Fecha' : 'Abre'} todos os vidros',
+  );
 }
 
 /// After the agent's reply: remember a question the next short answer completes. [sent] = what went to the agent for this request.
